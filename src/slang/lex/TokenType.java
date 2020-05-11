@@ -1,0 +1,23 @@
+package slang.lex;
+
+public enum TokenType {
+    LET, OBJ, PRINT,
+
+    LEFT_PAREN, RIGHT_PAREN,
+    LEFT_CURLY, RIGHT_CURLY,
+    LEFT_BRACKET, RIGHT_BRACKET,
+    SEMI,
+
+    ARROW, AT, BANG, COMMA, DOT, DOTDOT, EQ, EQEQ, NE, LT, LE, GT, GE, PIPE,
+    
+    PLUS, MINUS, STAR, SLASH,
+    
+    ATOM, IDENTIFIER, NUMBER, STRING, NOTHING, TRUE, FALSE,
+
+    STRING_INTERP_START, STRING_INTERP_END,
+    
+    NEWLINE,
+
+    ERROR,
+    EOF,
+}
