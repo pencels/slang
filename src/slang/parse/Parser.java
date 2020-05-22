@@ -102,7 +102,7 @@ public class Parser {
     }
 
     void skipNewlines() {
-        while (match(NEWLINE));
+        while (match(NEWLINE)) ;
     }
 
     Stmt statement() {
