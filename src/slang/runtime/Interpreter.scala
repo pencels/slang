@@ -1,10 +1,7 @@
 package slang.runtime
 
-import slang.lex.Token
 import slang.lex.TokenType
-import slang.parse.Expr
-import slang.parse.Pattern
-import slang.parse.Stmt
+import slang.parse.{Expr, Pattern, Stmt}
 
 import scala.annotation.tailrec
 
@@ -80,7 +77,7 @@ class Interpreter {
     case Expr.SlangList(exprs) => SlangList(exprs.map(eval(env, _)))
     case unary: Expr.Prefix => evalPrefixOperator(env, unary)
     case Expr.Block(statements) => Lazy(env, statements)
-    case Expr.Matchbox(matches) => Matchbox.from(env, matches)
+    case Expr.Matchbox(matches) => Matchbox.toMatchboxOrHashbox(env, matches)
   }
 
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
@@ -149,7 +146,13 @@ class Interpreter {
     strictCoerce(callee) match {
       case matchbox: Matchbox => {
         applyMatchbox(matchbox, args) match {
-          case (value, List()) => value
+          case (value, Nil) => value
+          case (value, rest) => call(env, value, rest)
+        }
+      }
+      case hashbox: Hashbox => {
+        applyHashbox(hashbox, args) match {
+          case (value, Nil) => value
           case (value, rest) => call(env, value, rest)
         }
       }
@@ -162,7 +165,7 @@ class Interpreter {
         // If we have more args, then try to call elem as if she were a callable, sis.
         // This also allows us to do 2-D, 3-D, etc array access like `(arr 0 1)`
         args.tail match {
-          case List() => elem
+          case Nil => elem
           case restArgs => call(env, elem, restArgs)
         }
       case _ => throw new RuntimeError(null, "Left expr of call must be a Matchbox or List.")
@@ -256,5 +259,71 @@ class Interpreter {
     }
 
     (Matchbox(remainingRows), remainingValues)
+  }
+
+  /** Apply a hashbox to a list of arguments.
+   *
+   * Given the arity N of the hashbox, and M parameters, this will return:
+   * if N < M -> Applied hashbox, plus (M - N) leftover unapplied arguments,
+   * if N = M -> Applied hashbox, and an empty list,
+   * if N > M -> Deferred hashbox (saving the args for later), and an empty list.
+   */
+  def applyHashbox(hashbox: Hashbox, args: List[Value]): (Value, List[Value]) = {
+    val Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) = hashbox
+
+    (hashbox.partialArguments ++ args) splitAt hashbox.arity match {
+      case (values, remainder) if values.length == hashbox.arity => {
+        // We NEED to coerce these values to hash them correctly.
+        val strictValues = values.map(strictCoerce)
+
+        if (rows.contains(strictValues)) {
+          // Cool, we just hash our value and call it a day.
+          val expr = hashbox.rows(strictValues)
+          (eval(hashbox.innerEnvironment, expr), remainder)
+        } else extraRow match {
+          // Otherwise, defer to the extra matchbox row...
+          case Some(HashboxRow(parameters, result)) =>
+            val allValues = strictValues ++ remainder
+            applyFinalHashboxRow(innerEnvironment, parameters, result, allValues)
+          case None =>
+            throw new RuntimeError(null, "Matchbox is exhausted with no match")
+        }
+      }
+      case (partialArguments, Nil) if args.length < hashbox.arity => {
+        // If we have less than the needed values, put her back together. Defer!
+        // TODO(michael): Semantically, it might be useful to coerce these args of their lazy NOW instead of later?
+        (Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow), Nil)
+      }
+    }
+  }
+
+  // This is just a pared-down version of applyMatchbox, simplifying for a single row.
+  def applyFinalHashboxRow(innerEnvironment: Environment, parameters: List[Pattern], result: Expr, values: List[Value]): (Value, List[Value]) = {
+    var remainingParameters = parameters
+    var remainingValues = values
+
+    while (remainingValues.nonEmpty) {
+      // Chop off one arg, and represent that arg as a thonk
+      val arg = Thunk.from(remainingValues.head)
+      remainingValues = remainingValues.tail
+
+      // I think we can assume every matchbox has at least one parameter.
+      val parameter = remainingParameters.head
+      remainingParameters = remainingParameters.tail
+
+      // Try to assign the pattern, mutating the environment if needed.
+      if (assign(innerEnvironment, parameter, arg)) {
+        // If the row is empty, then we're done here.
+        if (remainingParameters.isEmpty) {
+          return (eval(innerEnvironment, result), remainingValues)
+        }
+
+        // Otherwise, just continue...
+      } else {
+        throw new RuntimeError(null, "Matchbox is exhausted with no match")
+      }
+    }
+
+    (Matchbox(List(MatchboxRow(innerEnvironment, remainingParameters, result))), remainingValues)
   }
 }

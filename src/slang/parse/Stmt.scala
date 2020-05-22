@@ -13,6 +13,7 @@ object Stmt {
 
   case class Print(expr: Expr) extends Stmt
 
-  case class Match(patterns: List[Pattern], expr: Expr) extends Stmt
-
+  case class Match(patterns: List[Pattern], expr: Expr) extends Stmt {
+    def isHashable: Boolean = patterns forall { _.isHashable }
+  }
 }
