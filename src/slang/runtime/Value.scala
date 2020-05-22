@@ -37,6 +37,8 @@ case class Number(value: Double) extends Value {
 
   override def asDouble: Double = value
 
+  override def tryAsDouble(where: Token): Double = value
+
   override def toString: String = {
     var text = String.valueOf(value)
     if (text endsWith ".0") {
@@ -70,7 +72,7 @@ case class SlangList(values: List[Value]) extends Value {
   override def toString: String = values.map(_.toString).mkString("[", ", ", "]")
 }
 
-case class Lazy(statements: List[Stmt], environment: Environment) extends Value {
+case class Lazy(environment: Environment, statements: List[Stmt]) extends Value {
   override def toString: String = {
     var repr = environment.collapsedString
     repr += " { ... }"
@@ -87,20 +89,9 @@ case class MatchBoques(rows: List[MatchboxRow]) extends Value {
 
   override def toString: String = {
     // TODO(michael): Chris pls help make this pretty.
-
-    var repr = "{\n"
-
-    for (row <- rows) {
-      val envString = row.innerEnvironment.collapsedString
-      val patternsString = row.parameters map {
-        _.toString
-      } reduceLeft {
-        _ + " " + _
-      }
-      repr += envString + " " + patternsString + " -> ...\n"
-    }
-
-    repr + "}"
+    rows.map({
+      _.toSlangString
+    }).mkString("{ ", ", ", " }")
   }
 
   override def toSlangString: String = toString()
@@ -111,4 +102,15 @@ object MatchBoques {
     MatchBoques(ast map { m => MatchboxRow(new Environment(env), m.patterns, m.expr) })
 }
 
-case class MatchboxRow(innerEnvironment: Environment, parameters: List[Pattern], result: Expr)
+case class MatchboxRow(innerEnvironment: Environment, parameters: List[Pattern], result: Expr) {
+  def toSlangString: String = {
+    innerEnvironment.shortString + " " + (parameters.map({
+      _.toSlangString
+    }).mkString(" ")) + " -> ..."
+  }
+
+  def withNewEnvironment: MatchboxRow = {
+    // TODO(michael): It's probably better to treat Environment objects as... immutable.
+    MatchboxRow(new Environment(innerEnvironment), parameters, result)
+  }
+}

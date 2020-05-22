@@ -44,19 +44,19 @@ class Interpreter {
   }
 
   /** Convenience for strictCoerce(eval(env, exp)) */
-  def strictEval(env: Environment, expr: Expr): Value = strictCoerce(env, eval(env, expr))
+  def strictEval(env: Environment, expr: Expr): Value = strictCoerce(eval(env, expr))
 
   /** Evaluate a lazy explicitly */
-  def strictCoerce(env: Environment, value: Value): Value = value match {
-    case lazyValue: Lazy => interpret(env, lazyValue.statements)
+  def strictCoerce(value: Value): Value = value match {
+    case Lazy(env, statements) => interpret(env, statements)
     case x => x
   }
 
   /** Evaluate a thunk explicitly, or uses the cached value if it has been evaluated once. */
-  def strictCoerceThunk(env: Environment, thunk: Thunk): Value = thunk match {
+  def strictCoerceThunk(thunk: Thunk): Value = thunk match {
     case Thunk(Some(value), _) => value
     case Thunk(_, unevaluatedValue) => {
-      val value = strictCoerce(env, unevaluatedValue)
+      val value = strictCoerce(unevaluatedValue)
       thunk.cachedValue = Some(value)
       value
     }
@@ -79,7 +79,7 @@ class Interpreter {
     case post: Expr.Postfix => evalPostfixExpr(env, post)
     case Expr.SlangList(exprs) => SlangList(exprs.map(eval(env, _)))
     case unary: Expr.Prefix => evalPrefixOperator(env, unary)
-    case Expr.Block(statements) => Lazy(statements, env)
+    case Expr.Block(statements) => Lazy(env, statements)
     case Expr.Matchbox(matches) => MatchBoques.from(env, matches)
   }
 
@@ -146,7 +146,7 @@ class Interpreter {
 
   @tailrec
   final def call(env: Environment, callee: Value, args: List[Value]): Value = {
-    strictCoerce(env, callee) match {
+    strictCoerce(callee) match {
       case matchbox: MatchBoques => {
         applyMatchbox(matchbox, args) match {
           case (value, List()) => value
@@ -174,24 +174,34 @@ class Interpreter {
       case Pattern.Id(id) =>
         env.define(id.lexeme, arg.getValueMaybeCached)
         true
-
       case _: Pattern.Ignore => true
-
       case Pattern.Strict(inner) => {
-        strictCoerceThunk(env, arg) // evaluate the thunk!
+        strictCoerceThunk(arg) // evaluate the thunk!
         assign(env, inner, arg)
       }
-
-      case Pattern.Literal(_, value) => value == strictCoerceThunk(env, arg)
-
+      case Pattern.Literal(_, value) => value == strictCoerceThunk(arg)
       case Pattern.SlangList(patterns) =>
-        strictCoerceThunk(env, arg) match {
-          case SlangList(values) => ???
+        strictCoerceThunk(arg) match {
+          case SlangList(values) => assignList(env, patterns, values)
           case _ => false
         }
-
-      case Pattern.Spread(_) => ???
+      case Pattern.Spread(_) => throw new RuntimeError(null, "Unexpected spread pattern, not at end of list!")
     }
+  }
+
+  def assignList(env: Environment, patterns: List[Pattern], values: List[Value]): Boolean = (patterns, values) match {
+    case (Nil, Nil) =>
+      // We're at the end of the list... (or matching empty lists)
+      true
+    case (List(Pattern.Spread(spread)), values) => env.define(spread.lexeme, SlangList(values))
+      // Match the rest of the list with a spread
+      true
+    case (pattern :: patterns, value :: values) =>
+      // Do a 1:1 match of a list pattern and a value pattern
+      assign(env, pattern, Thunk.from(value)) && assignList(env, patterns, values)
+    case _ =>
+      // Either patterns is exhausted, or values is exhausted.
+      false
   }
 
   /** Apply a matchbox to a list of arguments.
@@ -202,10 +212,17 @@ class Interpreter {
    * if N > M -> Partially applied matchbox, and and empty list.
    */
   def applyMatchbox(matchbox: MatchBoques, values: List[Value]): (Value, List[Value]) = {
-    var remainingRows = matchbox.rows
+    assert(values.nonEmpty, "We must have at least one value to apply to this matchbox...")
+
+    // NOTE: we need to "refresh"/clone the environments for the matchbox, because this matchbox
+    // could be cloned and we would risk leaking a value out of our scope!
+    // TODO(michael): We could do withNewEnvironment heuristically, e.g. if our patterns have a variable.
+    var remainingRows = matchbox.rows map {
+      _.withNewEnvironment
+    }
     var remainingValues = values
 
-    while (true) {
+    while (remainingValues.nonEmpty) {
       // Chop off one arg, and represent that arg as a thonk
       val arg = Thunk.from(remainingValues.head)
       remainingValues = remainingValues.tail

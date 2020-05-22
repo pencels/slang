@@ -43,7 +43,7 @@ class Environment(val parent: Environment) {
         case _ => value
       }
       s"$name=$valueStr"
-    }).mkString("{", ", ", "}")
+    }).mkString("[", ", ", "]")
   }
 
   def collapsedString: String = {
