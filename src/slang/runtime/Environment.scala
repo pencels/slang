@@ -38,7 +38,7 @@ class Environment(val parent: Environment) {
   def shortString: String = {
     environment.map({ case (name, value) =>
       val valueStr = value match {
-        case _: MatchBoques => "<Matchbox>"
+        case _: Matchbox => "<Matchbox>"
         case _: Lazy => "{ ... }"
         case _ => value
       }

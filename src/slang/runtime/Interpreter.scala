@@ -80,7 +80,7 @@ class Interpreter {
     case Expr.SlangList(exprs) => SlangList(exprs.map(eval(env, _)))
     case unary: Expr.Prefix => evalPrefixOperator(env, unary)
     case Expr.Block(statements) => Lazy(env, statements)
-    case Expr.Matchbox(matches) => MatchBoques.from(env, matches)
+    case Expr.Matchbox(matches) => Matchbox.from(env, matches)
   }
 
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
@@ -147,7 +147,7 @@ class Interpreter {
   @tailrec
   final def call(env: Environment, callee: Value, args: List[Value]): Value = {
     strictCoerce(callee) match {
-      case matchbox: MatchBoques => {
+      case matchbox: Matchbox => {
         applyMatchbox(matchbox, args) match {
           case (value, List()) => value
           case (value, rest) => call(env, value, rest)
@@ -211,7 +211,7 @@ class Interpreter {
    * if N = M -> Applied matchbox, and an empty list,
    * if N > M -> Partially applied matchbox, and and empty list.
    */
-  def applyMatchbox(matchbox: MatchBoques, values: List[Value]): (Value, List[Value]) = {
+  def applyMatchbox(matchbox: Matchbox, values: List[Value]): (Value, List[Value]) = {
     assert(values.nonEmpty, "We must have at least one value to apply to this matchbox...")
 
     // NOTE: we need to "refresh"/clone the environments for the matchbox, because this matchbox
@@ -251,6 +251,6 @@ class Interpreter {
       remainingRows = newRows.reverse
     }
 
-    (MatchBoques(remainingRows), remainingValues)
+    (Matchbox(remainingRows), remainingValues)
   }
 }

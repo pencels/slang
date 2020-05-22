@@ -84,7 +84,7 @@ case class Lazy(environment: Environment, statements: List[Stmt]) extends Value 
   override def toSlangString: String = toString()
 }
 
-case class MatchBoques(rows: List[MatchboxRow]) extends Value {
+case class Matchbox(rows: List[MatchboxRow]) extends Value {
   override def getType: String = "Matchbox"
 
   override def toString: String = {
@@ -97,9 +97,9 @@ case class MatchBoques(rows: List[MatchboxRow]) extends Value {
   override def toSlangString: String = toString()
 }
 
-object MatchBoques {
+object Matchbox {
   def from(env: Environment, ast: List[Match]) =
-    MatchBoques(ast map { m => MatchboxRow(new Environment(env), m.patterns, m.expr) })
+    Matchbox(ast map { m => MatchboxRow(new Environment(env), m.patterns, m.expr) })
 }
 
 case class MatchboxRow(innerEnvironment: Environment, parameters: List[Pattern], result: Expr) {
