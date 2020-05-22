@@ -177,7 +177,10 @@ class Interpreter {
 
       case _: Pattern.Ignore => true
 
-      case Pattern.Strict(inner) => assign(env, inner, arg)
+      case Pattern.Strict(inner) => {
+        strictCoerceThunk(env, arg) // evaluate the thunk!
+        assign(env, inner, arg)
+      }
 
       case Pattern.Literal(_, value) => value == strictCoerceThunk(env, arg)
 
