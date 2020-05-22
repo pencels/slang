@@ -16,7 +16,7 @@ public class CallParselet implements InfixParselet {
             args.add(parser.expression(getPrecedence()));
         } while (parser.getPrecedence() >= this.getPrecedence());
 
-        return new Expr.Call(left, args);
+        return new Expr.Call(left, scala.jdk.CollectionConverters.ListHasAsScala(args).asScala().toList());
     }
 
     @Override

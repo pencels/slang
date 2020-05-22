@@ -23,6 +23,6 @@ public class SeqParselet implements PrefixParselet {
         }
 
         parser.consume(RIGHT_BRACKET, "Expect ']' to end list.");
-        return new Expr.Seq(elements);
+        return new Expr.SlangList(scala.jdk.CollectionConverters.ListHasAsScala(elements).asScala().toList());
     }
 }

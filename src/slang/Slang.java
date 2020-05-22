@@ -4,8 +4,8 @@ import slang.lex.Lexer;
 import slang.lex.Token;
 import slang.parse.*;
 import slang.runtime.Interpreter;
+import slang.runtime.SlangNothing;
 import slang.runtime.RuntimeError;
-import slang.runtime.Value;
 
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -91,13 +91,13 @@ public class Slang {
                 List<Stmt> stmts = parser.parse();
                 Object value = null;
                 for (Stmt stmt : stmts) {
-                    value = interpreter.execute(stmt);
+                    value = interpreter.execute(interpreter.rootEnv(), stmt);
 
                     if (stmt instanceof Stmt.Let) {
                         System.out.println(new AbbreviatedAstPrinter().print(stmt));
                     }
                 }
-                if (value != Value.Nothing.getInstance()) {
+                if (value != SlangNothing.getInstance()) {
                     System.out.println(value.toString());
                 }
             } catch (Exception error) {

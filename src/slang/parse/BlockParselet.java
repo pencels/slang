@@ -18,55 +18,28 @@ public class BlockParselet implements PrefixParselet {
 
         // Try each possible thing, backtrack if it didn't work.
         Pair<Expr, ParseException> expr;
+        List<ParseException> exceptions = new ArrayList<>();
 
         expr = tryParseMatchBlock(parser);
         if (expr.right == null) return expr.left;
+        exceptions.add(expr.right);
 
         parser.goToBookmark();
 
         expr = tryParseBlock(parser);
         if (expr.right == null) return expr.left;
-
-        parser.goToBookmark();
-
-        expr = tryParsePipeBlock(parser);
-        if (expr.right == null) return expr.left;
+        exceptions.add(expr.right);
 
         // All failed in some way, we have no way to tell what's right -- report all errors.
-        throw new ParseException(token, "Ambiguous block expression.");
+        parser.goToBookmark();
+        throw new AmbiguousParseException(token, scala.jdk.CollectionConverters.ListHasAsScala(exceptions).asScala().toList());
     }
 
     private Pair<Expr, ParseException> tryParseBlock(Parser parser) {
         try {
             List<Stmt> statements = parseStatements(parser);
             parser.consume(RIGHT_CURLY, "Expect `}` at end of block.");
-            return new Pair(new Expr.Block(statements), null);
-        } catch (ParseException e) {
-            return new Pair(null, e);
-        }
-    }
-
-    private Pair<Expr, ParseException> tryParsePipeBlock(Parser parser) {
-        try {
-            List<Pattern> params = parseMatchParams(parser);
-            parser.skipNewlines(); // TODO: ??? Allow putting '|' on a line after the parameter list???
-            parser.consume(PIPE, "Expect '|' to end parameter list.");
-            parser.skipNewlines(); // Body of block should be able to start on a different line from '|' or the open curly brace.
-
-            List<Stmt> statements = parseStatements(parser);
-            parser.consume(RIGHT_CURLY, "Expect `}` at end of block.");
-
-            Expr expr = new Expr.Block(statements);
-
-            if (statements.size() == 1) {
-                Stmt first = statements.get(0);
-                if (first instanceof Stmt.Expression) {
-                    expr = ((Stmt.Expression) first).expr;
-                }
-            }
-
-            List<Stmt.Match> matches = List.of(new Stmt.Match(params, expr));
-            return new Pair(new Expr.MatchBlock(matches), null);
+            return new Pair(new Expr.Block(scala.jdk.CollectionConverters.ListHasAsScala(statements).asScala().toList()), null);
         } catch (ParseException e) {
             return new Pair(null, e);
         }
@@ -80,10 +53,10 @@ public class BlockParselet implements PrefixParselet {
             // Sort by size so that shorter argument patterns go first.
             matches = matches
                     .stream()
-                    .sorted(Comparator.comparingInt(match -> match.patterns.size()))
+                    .sorted(Comparator.comparingInt(match -> match.patterns().size()))
                     .collect(Collectors.toList());
 
-            return new Pair(new Expr.MatchBlock(matches), null);
+            return new Pair(new Expr.Matchbox(scala.jdk.CollectionConverters.ListHasAsScala(matches).asScala().toList()), null);
         } catch (ParseException e) {
             return new Pair(null, e);
         }
@@ -106,7 +79,7 @@ public class BlockParselet implements PrefixParselet {
         parser.consume(ARROW, "Expect -> after pattern.");
 
         Expr expr = parser.expression();
-        return new Stmt.Match(patterns, expr);
+        return new Stmt.Match(scala.jdk.CollectionConverters.ListHasAsScala(patterns).asScala().toList(), expr);
     }
 
     private List<Stmt.Match> parseMatchStatements(Parser parser) {
@@ -115,7 +88,7 @@ public class BlockParselet implements PrefixParselet {
             matches.add(parseMatch(parser));
             if (parser.check(RIGHT_CURLY)) break;
             if (!parser.match(NEWLINE, COMMA)) {
-                throw new ParseException(parser.peek(), "Expect newline or comma after match.");
+                throw new ParseException(parser.peek(), "Expect newline or comma to separate matchbox clauses.");
             }
             parser.skipNewlines();
         }

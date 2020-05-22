@@ -2,7 +2,6 @@ package slang.parse;
 
 import slang.lex.Token;
 import slang.lex.TokenType;
-import slang.runtime.Interpreter;
 import slang.runtime.Value;
 
 import java.util.ArrayList;
@@ -259,6 +258,6 @@ public class Parser {
             consume(COMMA, "Expect ',' between list patterns.");
         }
         consume(RIGHT_BRACKET, "Expect ']' to end list pattern.");
-        return new Pattern.Seq(patterns);
+        return new Pattern.SlangList(scala.jdk.CollectionConverters.ListHasAsScala(patterns).asScala().toList());
     }
 }

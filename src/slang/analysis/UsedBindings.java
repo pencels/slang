@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/*
 public class UsedBindings implements Expr.Visitor<Set<String>>, Stmt.Visitor<Set<String>> {
     public Set<String> getBindings(Expr expr) {
         return expr.accept(this);
@@ -121,3 +122,4 @@ public class UsedBindings implements Expr.Visitor<Set<String>>, Stmt.Visitor<Set
         return getBindings(stmt.expr);
     }
 }
+*/

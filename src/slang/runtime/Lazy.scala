@@ -1,14 +1,13 @@
 package slang.runtime
 
-import java.util.List
 
 import slang.parse.Stmt
 
-class Lazy(val statements: List[Stmt], val environment: Environment) extends Value {
-    private var value: Value = null
+case class Lazy(statements: List[Stmt], environment: Environment) extends Value {
+    private var value: Value = _
 
     def getValue(interpreter: Interpreter): Value = {
-        value = interpreter interpret(statements, environment)
+        value = interpreter.interpret(environment, statements)
         value
     }
 
@@ -20,12 +19,13 @@ class Lazy(val statements: List[Stmt], val environment: Environment) extends Val
         value
     }
 
-    override def toString() = {
-        var repr = environment.collapsedString();
-        repr += " { ... }";
+    override def toString: String = {
+        var repr = environment.collapsedString
+        repr += " { ... }"
         repr
     }
 
-    override def getType() = "Lazy"
-    override def asString() = toString()
+    override def getType: String = "Lazy"
+    override def asString: String = toString()
+    override def isElemental: Boolean = false
 }

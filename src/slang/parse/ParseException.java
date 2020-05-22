@@ -8,4 +8,9 @@ public class ParseException extends RuntimeException {
         super(reason);
         this.token = token;
     }
+
+    @Override
+    public String getMessage() {
+        return String.format("[line %d, col %d] ", token.line, token.col) + super.getMessage();
+    }
 }

@@ -26,6 +26,6 @@ nest = {
     x 2 -> 2
     x _ -> 3
     z _ -> 4
-    y x 1 -> y + x
-    y w z -> y + w + z
+    y x -> { 1 -> y + x }
+    y w -> { z -> y + w + z }
 }

@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/*
 public class MatchTree extends Value {
     private final Node root;
     private final Environment environment;
@@ -351,3 +352,4 @@ public class MatchTree extends Value {
         }
     }
 }
+*/
