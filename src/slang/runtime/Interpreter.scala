@@ -247,6 +247,10 @@ class Interpreter {
         }
       }
 
+      if (remainingRows.isEmpty) {
+        throw new RuntimeError(null, "Matchbox is exhausted with no match")
+      }
+
       // This is an artifact of having to build up a new list...
       remainingRows = newRows.reverse
     }
