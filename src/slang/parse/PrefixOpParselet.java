@@ -6,6 +6,6 @@ public class PrefixOpParselet implements PrefixParselet {
     @Override
     public Expr parse(Parser parser, Token token) {
         Expr operand = parser.expression(0);
-        return new Expr.Unary(token, operand);
+        return new Expr.Prefix(token, operand);
     }
 }

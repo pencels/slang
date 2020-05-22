@@ -11,20 +11,20 @@ class Environment(val parent: Environment) {
 
   def define(name: String, value: Value): Unit = environment.put(name, value)
 
-  def get(name: String): Value = {
-    tryGet(name) match {
-      case Some(value) => value
-      case _ => throw new RuntimeException("Unbound name '" + name + "'.")
-    }
+  def get(name: String): Value = tryGet(name) match {
+    case Some(value) => value
+    case _ => throw new RuntimeException("Unbound name '" + name + "'.")
+  }
+
+  def tryGet(name: String): Option[Value] = (environment.get(name), parent) match {
+    case (Some(v), _) => Some(v)
+    case (None, null) => None
+    case (None, p) => p.tryGet(name)
   }
 
   def `with`(name: String, value: Value): Environment = {
     environment.put(name, value)
     this
-  }
-
-  def tryGet(name: String): Option[Value] = {
-    environment.get(name) orElse parent.tryGet(name)
   }
 
   def set(name: String, value: Value): Unit = {
@@ -38,7 +38,7 @@ class Environment(val parent: Environment) {
   def shortString: String = {
     environment.map({ case (name, value) =>
       val valueStr = value match {
-        case _: Matchbox => "<Matchbox>"
+        case _: MatchBoques => "<Matchbox>"
         case _: Lazy => "{ ... }"
         case _ => value
       }

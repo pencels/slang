@@ -154,16 +154,16 @@ public class Parser {
 
     boolean check(TokenType type) {
         if (isAtEnd()) return false;
-        return peek().type == type;
+        return peek().opType == type;
     }
 
     boolean isAtEnd() {
-        return peek().type == TokenType.EOF;
+        return peek().opType == TokenType.EOF;
     }
 
     Token consume(TokenType expected, String errorMessage) {
         Token token = peek();
-        if (token.type != expected) {
+        if (token.opType != expected) {
             throw new ParseException(previous(), errorMessage);
         }
 
@@ -183,14 +183,14 @@ public class Parser {
         }
 
         Token token = advance();
-        PrefixParselet prefix = prefixParselets.get(token.type);
+        PrefixParselet prefix = prefixParselets.get(token.opType);
 
         if (prefix == null) throw new ParseException(token, "Could not parse token: " + token + ".");
 
         Expr left = prefix.parse(this, token);
 
         while (precedence < getPrecedence()) {
-            TokenType nextType = peek().type;
+            TokenType nextType = peek().opType;
             if (!(infixParselets.get(nextType) instanceof CallParselet)) {
                 token = advance();
             }
@@ -206,7 +206,7 @@ public class Parser {
     }
 
     int getPrecedence() {
-        InfixParselet parser = infixParselets.get(peek().type);
+        InfixParselet parser = infixParselets.get(peek().opType);
         if (parser != null) return parser.getPrecedence();
         return 0;
     }
@@ -223,7 +223,7 @@ public class Parser {
         if (match(NOTHING, NUMBER, STRING, ATOM, TRUE, FALSE)) {
             Token lit = previous();
             Value value = LiteralParselet.valueFromToken(lit);
-            return new Pattern.Literal(new Token(lit.type, lit.lexeme, value, lit.line, lit.col), value);
+            return new Pattern.Literal(new Token(lit.opType, lit.lexeme, value, lit.line, lit.col), value);
         }
         if (match(LEFT_BRACKET)) return listPattern();
         if (match(LEFT_CURLY)) return lazyPattern();
@@ -247,7 +247,7 @@ public class Parser {
             throw new ParseException(token, "Lazy pattern must be _ or identifier.");
         }
         consume(RIGHT_CURLY, "Expect '}' to close lazy pattern.");
-        return new Pattern.Lazy(inner);
+        return new Pattern.Strict(inner);
     }
 
     public Pattern listPattern() {

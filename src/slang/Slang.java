@@ -3,6 +3,7 @@ package slang;
 import slang.lex.Lexer;
 import slang.lex.Token;
 import slang.parse.*;
+import slang.runtime.Environment;
 import slang.runtime.Interpreter;
 import slang.runtime.SlangNothing;
 import slang.runtime.RuntimeError;
@@ -24,6 +25,7 @@ public class Slang {
      */
     public static void main(String[] args) {
         Scanner input = new Scanner(System.in);
+        Environment rootEnv = new Environment();
         Interpreter interpreter = new Interpreter();
 
         printPrompt();
@@ -90,7 +92,7 @@ public class Slang {
                 List<Stmt> stmts = parser.parse();
                 Object value = null;
                 for (Stmt stmt : stmts) {
-                    value = interpreter.execute(interpreter.rootEnv(), stmt);
+                    value = interpreter.execute(rootEnv, stmt);
 
                     if (stmt instanceof Stmt.Let) {
                         System.out.println(new AbbreviatedAstPrinter().print(stmt));

@@ -1,7 +1,7 @@
 package slang.parse
 
 import slang.lex.Token
-import slang.runtime.Value
+import slang.runtime.{Environment, Value}
 
 sealed trait Pattern
 
@@ -11,7 +11,7 @@ object Pattern {
 
   case class Ignore(token: Token) extends Pattern
 
-  case class Lazy(inner: Pattern) extends Pattern
+  case class Strict(inner: Pattern) extends Pattern
 
   case class Literal(token: Token, value: Value) extends Pattern
 
