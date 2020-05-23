@@ -28,7 +28,7 @@ object Expr {
 
   case class SlangList(elements: List[Expr]) extends Expr
 
-  case class Unary(op: Token, expr: Expr) extends Expr
+  case class Prefix(op: Token, expr: Expr) extends Expr
 
 }
 

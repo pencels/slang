@@ -9,13 +9,13 @@ public enum TokenType {
     SEMI,
 
     ARROW, AT, BANG, COMMA, DOT, DOTDOT, EQ, EQEQ, NE, LT, LE, GT, GE, PIPE,
-    
+
     PLUS, MINUS, STAR, SLASH,
-    
+
     ATOM, IDENTIFIER, NUMBER, STRING, NOTHING, TRUE, FALSE,
 
     STRING_INTERP_START, STRING_INTERP_END,
-    
+
     NEWLINE,
 
     ERROR,

@@ -5,7 +5,7 @@ import slang.runtime.{Atom, Interpreter, Number, SlangNothing, SlangString, Valu
 
 object LiteralParselet {
   def valueFromToken(token: Token): Value = {
-    token.`type` match {
+    token.opType match {
       case TokenType.NOTHING => SlangNothing
       case TokenType.TRUE => Interpreter.TRUE_ATOM
       case TokenType.FALSE => Interpreter.FALSE_ATOM

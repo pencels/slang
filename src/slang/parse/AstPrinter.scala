@@ -1,7 +1,8 @@
 package slang.parse
 
-class AstPrinter {
+case class AstPrinter() {
   def print(x: Any): String = x.toString
+
   /*
   def print(expr: Expr): String = {
     expr match {

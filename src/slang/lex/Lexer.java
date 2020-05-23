@@ -13,7 +13,11 @@ public class Lexer {
     //private Stack<Integer> interpScopes = new Stack<>();
 
     private Stack<Integer> parens = new Stack<>();
-    { parens.push(0); }
+
+    {
+        parens.push(0);
+    }
+
     private int numInterpolationScopes = 0;
 
     static {
@@ -99,11 +103,21 @@ public class Lexer {
                 }
                 break;
             }
-            case '{': addToken(LEFT_CURLY); break;
-            case '}': addToken(RIGHT_CURLY); break;
-            case '[': addToken(LEFT_BRACKET); break;
-            case ']': addToken(RIGHT_BRACKET); break;
-            case ';': addToken(SEMI); break;
+            case '{':
+                addToken(LEFT_CURLY);
+                break;
+            case '}':
+                addToken(RIGHT_CURLY);
+                break;
+            case '[':
+                addToken(LEFT_BRACKET);
+                break;
+            case ']':
+                addToken(RIGHT_BRACKET);
+                break;
+            case ';':
+                addToken(SEMI);
+                break;
             case '!':
                 if (match('=')) {
                     addToken(NE);
@@ -111,9 +125,15 @@ public class Lexer {
                     addToken(BANG);
                 }
                 break;
-            case '|': addToken(PIPE); break;
-            case '@': addToken(AT); break;
-            case ',': addToken(COMMA); break;
+            case '|':
+                addToken(PIPE);
+                break;
+            case '@':
+                addToken(AT);
+                break;
+            case ',':
+                addToken(COMMA);
+                break;
             case '<':
                 if (match('=')) {
                     addToken(LE);
@@ -145,9 +165,15 @@ public class Lexer {
                     addToken(MINUS);
                 }
                 break;
-            case '+': addToken(PLUS); break;
-            case '*': addToken(STAR); break;
-            case '/': addToken(SLASH); break;
+            case '+':
+                addToken(PLUS);
+                break;
+            case '*':
+                addToken(STAR);
+                break;
+            case '/':
+                addToken(SLASH);
+                break;
             case '=':
                 if (match('=')) {
                     addToken(EQEQ);
@@ -155,8 +181,12 @@ public class Lexer {
                     addToken(EQ);
                 }
                 break;
-            case '"': string(); break;
-            case ':': atom(); break;
+            case '"':
+                string();
+                break;
+            case ':':
+                atom();
+                break;
 
             case '\n':
                 addToken(NEWLINE);
