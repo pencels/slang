@@ -92,6 +92,18 @@ class Interpreter {
           // We love overloaded operators
           case (SlangString(value), _) => SlangString(value + right.toSlangString)
           case (SlangList(leftValues), SlangList(rightValues)) => SlangList(leftValues ++ rightValues)
+          case (Matchbox(left), Matchbox(right)) =>
+            Matchbox(left ++ right)
+          case (Matchbox(left), r: Hashbox) =>
+            val Matchbox(right) = transmuteHashbox(r)
+            Matchbox(left ++ right)
+          case (l: Hashbox, r: Hashbox) =>
+            val Matchbox(left) = transmuteHashbox(l)
+            val Matchbox(right) = transmuteHashbox(r)
+            Matchbox(left ++ right)
+          case (l: Hashbox, Matchbox(right)) =>
+            val Matchbox(left) = transmuteHashbox(l)
+            Matchbox(left ++ right)
           case _ =>
             Number(left.tryAsDouble(op) + right.tryAsDouble(op))
         }
@@ -182,7 +194,7 @@ class Interpreter {
         strictCoerceThunk(arg) // evaluate the thunk!
         assign(env, inner, arg)
       }
-      case Pattern.Literal(_, value) => value == strictCoerceThunk(arg)
+      case Pattern.Literal(value) => value == strictCoerceThunk(arg)
       case Pattern.SlangList(patterns) =>
         strictCoerceThunk(arg) match {
           case SlangList(values) => assignList(env, patterns, values)
@@ -325,5 +337,32 @@ class Interpreter {
     }
 
     (Matchbox(List(MatchboxRow(innerEnvironment, remainingParameters, result))), remainingValues)
+  }
+
+  def transmuteHashbox(hashbox: Hashbox): Matchbox = {
+    val Hashbox(partialArguments, env, _, rows, extraRow) = hashbox
+    var matchboxRows = rows.map({case (k, v) => MatchboxRow(env, k map { Pattern.Literal(_) }, v)}).toList
+
+    // Append the extra row, if exists.
+    extraRow match {
+      case Some(HashboxRow(parameters, result)) =>
+        matchboxRows ++= List(MatchboxRow(env, parameters, result))
+      case _ =>
+    }
+
+    val matchbox =  Matchbox(matchboxRows)
+
+    // Now we need to apply the partial args, if they exist...
+    if (partialArguments.nonEmpty) {
+      val (appliedMatchbox, leftoverArguments) = applyMatchbox(matchbox, partialArguments)
+
+      // Since the number of partial arguments is less than the arity of the rows,
+      // then we will always receive a partially applied matchbox back... and we should
+      // have no leftover arguments, either.
+      assert(leftoverArguments.isEmpty)
+      appliedMatchbox.asInstanceOf[Matchbox]
+    } else {
+      matchbox
+    }
   }
 }

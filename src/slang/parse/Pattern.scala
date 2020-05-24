@@ -24,7 +24,7 @@ object Pattern {
     override def toSlangString(): String = "{" + inner.toSlangString + "}"
   }
 
-  case class Literal(token: Token, value: Value) extends Pattern {
+  case class Literal(value: Value) extends Pattern {
     override def toSlangString: String = value.toSlangString
 
     override def isHashable: Boolean = true

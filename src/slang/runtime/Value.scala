@@ -106,22 +106,26 @@ case class Matchbox(rows: List[MatchboxRow]) extends Value {
 
 object Matchbox {
   def from(env: Environment, ast: List[Match]): Matchbox =
-    Matchbox(ast map { m => MatchboxRow(new Environment(env), m.patterns, m.expr) })
+    Matchbox(ast map { m => MatchboxRow(env, m.patterns, m.expr) })
 
   def toMatchboxOrHashbox(env: Environment, ast: List[Match]): Value = ast.reverse match {
-    case literalPatterns if isHashboxable(literalPatterns) =>
+    case literalPatterns if isHashboxable(literalPatterns, None) =>
       // NOTE: `literalPatterns` not reversed here, so our final hashmap has first pattern precedence.
       Hashbox.from(env, literalPatterns, None)
-    case extraPattern :: literalPatterns if isHashboxable(literalPatterns) =>
+    case extraPattern :: literalPatterns if isHashboxable(literalPatterns, Some(extraPattern)) =>
       Hashbox.from(env, literalPatterns, Some(extraPattern))
     case _ => Matchbox.from(env, ast)
   }
 
-  /** Whether this set of literal patterns are matchbox-able */
-  def isHashboxable(literalPatterns: List[Match]): Boolean =
+  /** Whether this set of literal patterns are matchbox-able, that is:
+   *  1. If there's at least one hashable pattern,
+   *  2. All of the hashable patterns are the same arity, and
+   *  3. The additional non-hashable pattern (if exists) is the same arity.
+   */
+  def isHashboxable(literalPatterns: List[Match], extraPattern: Option[Match]): Boolean =
     literalPatterns.nonEmpty && literalPatterns.forall(_.isHashable) && sameArity(literalPatterns map {
       _.patterns
-    })
+    }) && extraPattern.forall(_.patterns.length == literalPatterns.head.patterns.length)
 
   // TODO: Helper fn, this doesn't need to be here...
   def sameArity[T](patterns: List[List[T]]): Boolean = patterns match {
