@@ -63,7 +63,7 @@ class Interpreter {
     case Expr.Assign(left, right) =>
       val value = eval(env, right)
       // NOTE(michael): I know, wrapping this in a thunk is kinda ugly here, but it's for a good cause.
-      if (!assign(env, left, Thunk.from(value))) throw new RuntimeError(null, "Match failed.")
+      if (!assign(env, left, Thunk.from(value), define = false)) throw new RuntimeError(null, "Match failed.")
       value
     case bin: Expr.Binary => evalBinExpr(env, bin)
     case Expr.Call(callee, argExprs) =>
@@ -184,36 +184,43 @@ class Interpreter {
     }
   }
 
-  def assign(env: Environment, pattern: Pattern, arg: Thunk): Boolean = {
+  def assign(env: Environment, pattern: Pattern, arg: Thunk, define: Boolean = true): Boolean = {
     pattern match {
       case Pattern.Id(id) =>
-        env.define(id.lexeme, arg.getValueMaybeCached)
+        if (define)
+          env.define(id.lexeme, arg.unevaluatedValue)
+        else
+          env.set(id.lexeme, arg.unevaluatedValue)
         true
       case _: Pattern.Ignore => true
       case Pattern.Strict(inner) => {
         strictCoerceThunk(arg) // evaluate the thunk!
-        assign(env, inner, arg)
+        assign(env, inner, arg, define)
       }
       case Pattern.Literal(value) => value == strictCoerceThunk(arg)
       case Pattern.SlangList(patterns) =>
         strictCoerceThunk(arg) match {
-          case SlangList(values) => assignList(env, patterns, values)
+          case SlangList(values) => assignList(env, patterns, values, define)
           case _ => false
         }
       case Pattern.Spread(_) => throw new RuntimeError(null, "Unexpected spread pattern, not at end of list!")
     }
   }
 
-  def assignList(env: Environment, patterns: List[Pattern], values: List[Value]): Boolean = (patterns, values) match {
+  def assignList(env: Environment, patterns: List[Pattern], values: List[Value], define: Boolean = true): Boolean = (patterns, values) match {
     case (Nil, Nil) =>
       // We're at the end of the list... (or matching empty lists)
       true
-    case (List(Pattern.Spread(spread)), values) => env.define(spread.lexeme, SlangList(values))
+    case (List(Pattern.Spread(spread)), values) =>
+      if (define)
+        env.define(spread.lexeme, SlangList(values))
+      else
+        env.set(spread.lexeme, SlangList(values))
       // Match the rest of the list with a spread
       true
     case (pattern :: patterns, value :: values) =>
       // Do a 1:1 match of a list pattern and a value pattern
-      assign(env, pattern, Thunk.from(value)) && assignList(env, patterns, values)
+      assign(env, pattern, Thunk.from(value), define) && assignList(env, patterns, values, define)
     case _ =>
       // Either patterns is exhausted, or values is exhausted.
       false

@@ -28,6 +28,13 @@ public class Slang {
         Environment rootEnv = new Environment();
         Interpreter interpreter = new Interpreter();
 
+        try {
+            var prelude = load("lib/prelude.slang");
+            interpret(interpreter, rootEnv, prelude);
+        } catch (IOException e) {
+            System.err.println("Error: could not open 'lib/prelude.slang'");
+        }
+
         printPrompt();
         for (; input.hasNextLine(); printPrompt()) {
             String text = input.nextLine().trim();
@@ -43,7 +50,7 @@ public class Slang {
                 String filename = cmd.hasNext() ? cmd.next() : "";
 
                 try {
-                    text = load(filename);
+                    text = loadExample(filename);
                 } catch (IOException e) {
                     System.err.format("Error: could not open 'examples/%s'\n", filename);
                     continue;
@@ -84,26 +91,30 @@ public class Slang {
                 continue;
             }
 
-            Lexer lexer = new Lexer(text);
-            List<Token> tokens = lexer.lex();
-            Parser parser = new Parser(tokens);
+            interpret(interpreter, rootEnv, text);
+        }
+    }
 
-            try {
-                List<Stmt> stmts = parser.parse();
-                Object value = null;
-                for (Stmt stmt : stmts) {
-                    value = interpreter.execute(rootEnv, stmt);
+    private static void interpret(Interpreter interpreter, Environment rootEnv, String text) {
+        Lexer lexer = new Lexer(text);
+        List<Token> tokens = lexer.lex();
+        Parser parser = new Parser(tokens);
 
-                    if (stmt instanceof Stmt.Let) {
-                        System.out.println(new AbbreviatedAstPrinter().print(stmt));
-                    }
+        try {
+            List<Stmt> stmts = parser.parse();
+            Object value = null;
+            for (Stmt stmt : stmts) {
+                value = interpreter.execute(rootEnv, stmt);
+
+                if (stmt instanceof Stmt.Let) {
+                    System.out.println(new AbbreviatedAstPrinter().print(stmt));
                 }
-                if (value != SlangNothing.getInstance()) {
-                    System.out.println(value.toString());
-                }
-            } catch (Exception error) {
-                error.printStackTrace();
             }
+            if (value != SlangNothing.getInstance()) {
+                System.out.println(value.toString());
+            }
+        } catch (Exception error) {
+            error.printStackTrace();
         }
     }
 
@@ -112,8 +123,13 @@ public class Slang {
         System.out.flush();
     }
 
-    static String load(String filename) throws IOException {
+    static String loadExample(String filename) throws IOException {
         Path path = FileSystems.getDefault().getPath("examples", filename);
+        return new String(Files.readAllBytes(path));
+    }
+
+    static String load(String filename) throws IOException {
+        Path path = FileSystems.getDefault().getPath(filename);
         return new String(Files.readAllBytes(path));
     }
 
