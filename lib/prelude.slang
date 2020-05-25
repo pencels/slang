@@ -41,3 +41,52 @@ let map = {
     f []       -> []
     f [h, t..] -> [f h] + map f t
 }
+
+let __primitives__ = memoize {
+    let atom_bindings = ref {
+        atom :to_str -> "" + atom
+    }
+
+    let list_bindings = ref {
+        list :foreach f -> { map f list; nothing }
+        [] :to_str -> "[]"
+        list :to_str -> {
+            let suffix = {
+                [] -> "]"
+                [h, t..] -> ("" + h + ",") + suffix t
+            }
+
+            "[" + suffix list
+        }
+        [] idx -> "index out of bounds exception"
+        list idx ->
+    }
+
+    let number_bindings = ref {
+        num :plus other -> num + other
+    }
+
+    {
+        :Atom -> atom_bindings
+        :List -> list_bindings
+        :Nothing -> ref nothing
+        :Number -> number_bindings
+        :String -> ref nothing
+    }
+}
+
+let extend_prim = {
+    type extension -> __primitives__ type :set (__primitives__ type :get + extension)
+}
+
+extend_prim :List { list :map f -> map f list }
+
+-- extend Option types
+extend_prim :Atom {
+    :None :get -> "error"
+    :None :get_or alt -> alt
+}
+extend_prim :List {
+    [:Some, x] :get -> x
+    [:Some, x] :get_or _ -> x
+}
