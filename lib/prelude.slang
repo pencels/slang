@@ -24,7 +24,8 @@ let memoize = {
                 __memo = [:Some, v]
                 v
             } {
-                __memo 1
+                let [_, v] = __memo
+                v
             }
         }
     }
@@ -44,42 +45,68 @@ let map = {
 
 let __primitives__ = memoize {
     let atom_bindings = ref {
-        atom :to_str -> "" + atom
+        _ :type -> "Atom"
     }
 
     let list_bindings = ref {
-        list :foreach f -> { map f list; nothing }
-        [] :to_str -> "[]"
-        list :to_str -> {
+        list :map f -> map { x -> eval (f x) } list
+        list :foreach f -> { list :map { x -> eval (f x) }; nothing }
+
+        []       :len -> 0
+        [_, t..] :len -> 1 + t :len
+
+        [] :empty? -> :true
+        _  :empty? -> :false
+
+        [] :mk_str start _ end -> "" + start + end
+        [h, t..] :mk_str start delim end -> {
             let suffix = {
-                [] -> "]"
-                [h, t..] -> ("" + h + ",") + suffix t
+                [] -> "" + end
+                [h, t..] -> ("" + delim + h) + suffix t
             }
 
-            "[" + suffix list
+            "" + start + h + suffix t
         }
-        [] idx -> "index out of bounds exception"
-        list idx ->
+        list :to_str -> list :mk_str "[" "," "]"
+
+        [] :try_at _ -> :None
+        [h, t..] :try_at 0 -> [:Some, h]
+        [h, t..] :try_at n -> t :try_at (n - 1)
+
+        list :at n -> list :try_at n :get_or "index out of bounds exception"
+
+        _ :type -> "List"
+    }
+
+    let nothing_bindings = ref {
+        _ :type -> "Nothing"
     }
 
     let number_bindings = ref {
-        num :plus other -> num + other
+        start :to end -> if (start > end) [] { [start] + (start + 1) :to end }
+
+        0 :times _ -> nothing
+        n :times body -> { body; (n - 1) :times body }
+
+        _ :type -> "Number"
+    }
+
+    let string_bindings = ref {
+        _ :type -> "String"
     }
 
     {
         :Atom -> atom_bindings
         :List -> list_bindings
-        :Nothing -> ref nothing
+        :Nothing -> nothing_bindings
         :Number -> number_bindings
-        :String -> ref nothing
+        :String -> string_bindings
     }
 }
 
 let extend_prim = {
-    type extension -> __primitives__ type :set (__primitives__ type :get + extension)
+    type extension -> __primitives__ type :set (extension + __primitives__ type :get)
 }
-
-extend_prim :List { list :map f -> map f list }
 
 -- extend Option types
 extend_prim :Atom {

@@ -7,4 +7,5 @@ case class Thunk(var cachedValue: Option[Value], unevaluatedValue: Value) {
 
 object Thunk {
   def from(value: Value) = Thunk(None, value)
+  def fromStrict(value: Value) = Thunk(Some(value), value)
 }

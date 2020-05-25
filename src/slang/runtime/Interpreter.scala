@@ -10,7 +10,6 @@ object Interpreter {
   val FALSE_ATOM: Value = Atom("false")
 }
 
-// TODO: rewrite all this visitor stuff to be just a match expr.
 class Interpreter {
   def interpret(env: Environment, statements: List[Stmt]): Value = {
     var ret: Value = SlangNothing
@@ -45,7 +44,7 @@ class Interpreter {
 
   /** Evaluate a lazy explicitly */
   def strictCoerce(value: Value): Value = value match {
-    case Lazy(env, statements) => interpret(env, statements)
+    case Lazy(env, statements) => interpret(new Environment(env), statements)
     case x => x
   }
 
@@ -168,19 +167,12 @@ class Interpreter {
           case (value, rest) => call(env, value, rest)
         }
       }
-      case SlangList(values) =>
-        val elem = values(args.head match {
-          case Number(n) if Math.floor(n) == n => n.toInt
-          case _ => throw new RuntimeError(null /* TODO: We should put a token here. */ , "List index must be an integer.")
-        })
-
-        // If we have more args, then try to call elem as if she were a callable, sis.
-        // This also allows us to do 2-D, 3-D, etc array access like `(arr 0 1)`
-        args.tail match {
-          case Nil => elem
-          case restArgs => call(env, elem, restArgs)
-        }
-      case _ => throw new RuntimeError(null, "Left expr of call must be a Matchbox or List.")
+      case callee => 
+        // Use __primitives__ to handle method calls on primitives.
+        val typeAtom = Atom(callee.getType)
+        val primitives = env.get("__primitives__");
+        val newArgs = typeAtom :: Atom("get") :: callee :: args;
+        call(env, primitives, newArgs)
     }
   }
 
@@ -193,10 +185,7 @@ class Interpreter {
           env.set(id.lexeme, arg.unevaluatedValue)
         true
       case _: Pattern.Ignore => true
-      case Pattern.Strict(inner) => {
-        strictCoerceThunk(arg) // evaluate the thunk!
-        assign(env, inner, arg, define)
-      }
+      case Pattern.Strict(inner) => assign(env, inner, Thunk.fromStrict(strictCoerceThunk(arg)), define)
       case Pattern.Literal(value) => value == strictCoerceThunk(arg)
       case Pattern.SlangList(patterns) =>
         strictCoerceThunk(arg) match {
@@ -269,7 +258,7 @@ class Interpreter {
         }
       }
 
-      if (remainingRows.isEmpty) {
+      if (newRows.isEmpty) {
         throw new RuntimeError(null, "Matchbox is exhausted with no match")
       }
 
@@ -298,12 +287,12 @@ class Interpreter {
         if (rows.contains(strictValues)) {
           // Cool, we just hash our value and call it a day.
           val expr = hashbox.rows(strictValues)
-          (eval(hashbox.innerEnvironment, expr), remainder)
+          (eval(new Environment(hashbox.innerEnvironment), expr), remainder)
         } else extraRow match {
           // Otherwise, defer to the extra matchbox row...
           case Some(HashboxRow(parameters, result)) =>
             val allValues = strictValues ++ remainder
-            applyFinalHashboxRow(innerEnvironment, parameters, result, allValues)
+            applyFinalHashboxRow(new Environment(innerEnvironment), parameters, result, allValues)
           case None =>
             throw new RuntimeError(null, "Matchbox is exhausted with no match")
         }
