@@ -223,7 +223,7 @@ public class Parser {
         if (match(NOTHING, NUMBER, STRING, ATOM, TRUE, FALSE)) {
             Token lit = previous();
             Value value = LiteralParselet.valueFromToken(lit);
-            return new Pattern.Literal(new Token(lit.opType, lit.lexeme, value, lit.line, lit.col), value);
+            return new Pattern.Literal(value);
         }
         if (match(LEFT_BRACKET)) return listPattern();
         if (match(LEFT_CURLY)) return lazyPattern();
