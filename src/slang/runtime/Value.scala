@@ -34,7 +34,7 @@ case object SlangNothing extends Value {
 }
 
 case class Number(value: Double) extends Value {
-  override def getType: String = "Double"
+  override def getType: String = "Number"
 
   override def toSlangString: String = toString()
 
