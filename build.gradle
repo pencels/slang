@@ -1,0 +1,23 @@
+plugins {
+    id 'java'
+    id 'scala'
+}
+
+dependencies {
+    implementation 'org.scala-lang:scala-library:2.13.2'
+}
+
+repositories {
+    mavenCentral()
+}
+
+task(run, dependsOn: 'classes', type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    standardInput = System.in
+    main = 'slang.Slang'
+}
+
+// Move the main src directory to the Scala plugin, 
+// so both Java and Scala live in peace...
+sourceSets.main.scala.srcDirs = ["src/"]
+sourceSets.main.java.srcDirs = []
