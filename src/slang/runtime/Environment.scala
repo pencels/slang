@@ -1,5 +1,7 @@
 package slang.runtime
 
+import slang.parse.AstPrinter
+
 import scala.collection._
 
 class Environment(val parent: Environment) {
@@ -36,14 +38,19 @@ class Environment(val parent: Environment) {
   }
 
   def shortString: String = {
-    environment.map({ case (name, value) =>
+    val keyValPairs = environment.map({ case (name, value) =>
       val valueStr = value match {
         case _: Matchbox => "<Matchbox>"
+        case _: Hashbox => "<Hashbox>"
         case _: Lazy => "{ ... }"
-        case _ => value
+        case _ => new AstPrinter().print(value)
       }
       s"$name=$valueStr"
-    }).mkString("[", ", ", "]")
+    }).toList
+
+    val maybeTruncatedPairs = if (environment.size > 5) ("..." :: keyValPairs.takeRight(4)) else keyValPairs
+    
+    maybeTruncatedPairs.mkString("[", ", ", "]")
   }
 
   def collapsedString: String = {

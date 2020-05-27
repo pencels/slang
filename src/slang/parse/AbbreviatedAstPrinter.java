@@ -1,6 +1,6 @@
 package slang.parse;
 
-public class AbbreviatedAstPrinter extends AstPrinter {
+public class AbbreviatedAstPrinter {
     public String print(Object object) {
         return object.toString();
     }

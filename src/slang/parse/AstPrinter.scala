@@ -1,107 +1,112 @@
 package slang.parse
+import slang.parse.Expr._
+import slang.parse.Stmt._
+import slang.parse.Pattern._
+import slang.runtime._
 
-case class AstPrinter() {
-  def print(x: Any): String = x.toString
+class AstPrinter {
+  private val INDENT_STR = "    ";
 
-  /*
-  def print(expr: Expr): String = {
+  def print(expr: Expr): String = print(0, expr)
+
+  /**
+    * Prints the expression with indentation.
+    *
+    * @param indent The number of indents that the expression is at.
+    * @param expr The expression.
+    * @return
+    */
+  def print(indent: Int, expr: Expr): String = {
     expr match {
-      case Expr.Assign(left, right) => "(" + print(left) + " = " + print(right) + ")"
-      case Expr.Binary(left, op, right) => parenthesize(op.lexeme, left, right)
-      case Expr.Block(statements) => statements.map(print).mkString("{ ", "; ", " }")
-      case Expr.Matchbox(matches) => ???
-      case Expr.Call(left, args) => (print(left) :: args.map(print)).mkString("(", " ", ")")
-      case Expr.Grouping(inner) => parenthesize("group", inner)
+      case Assign(left, right) => print(left) + " = " + print(indent, right)
+      case Binary(left, op, right) => print(left) + " " + op.lexeme + " " + print(right)
+      case Block(statements) => printMaybeIndented(indent, statements.map(print(indent + 1, _)), "{", "\n", "}")
+      case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent + 1, _)), "{", "\n", "}")
+      case Call(left, args) => (left :: args).map(print(indent, _)).mkString(" ")
+      case Grouping(inner) => "(" + print(inner) + ")"
       case Expr.Id(name) => name
       case Expr.Literal(value) => value.toString
-      case Expr.Postfix(expr, op) => parenthesize("post" + op.lexeme, expr)
+      case Postfix(expr, op) => print(expr) + op.lexeme
       case Expr.SlangList(elements) => elements.map(print).mkString("[", ", ", "]")
-      case Expr.Unary(op, expr) => parenthesize(op.lexeme, expr)
+      case Prefix(op, expr) => op.lexeme + print(expr)
     }
   }
 
-  def print(stmt: Stmt) = {
+  def print(stmt: Stmt): String = print(0, stmt)
+
+  def print(indent: Int, stmt: Stmt): String = {
     stmt match {
-      case Stmt.Expression(expr) =>
-      case Stmt.Let(pattern, init) =>
-      case Stmt.Print(expr) =>
-      case Stmt.Match(patterns, expr) =>
+      case Expression(expr) => print(indent, expr)
+      case Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
+      case Print(expr) => "print " + print(indent, expr)
+      case Match(patterns, expr) => patterns.map(print).mkString(" ") + " -> " + print(indent, expr)
     }
   }
 
-  def print(pattern: Pattern) = {
+  def print(pattern: Pattern): String = {
     pattern match {
-      case Pattern.Id(name) =>
-      case Pattern.Ignore(token) =>
-      case Pattern.Lazy(inner) =>
-      case Pattern.Literal(token, value) =>
-      case Pattern.SlangList(patterns) =>
-      case Pattern.Spread(name) =>
+      case Pattern.Id(name) => name.lexeme
+      case Ignore(token) => "_"
+      case Strict(inner) => "{ " + print(inner) + " }"
+      case Pattern.Literal(value) => value.toString
+      case Pattern.SlangList(patterns) => patterns.map(print).mkString("[", ", ", "]")
+      case Spread(name) => name.lexeme + ".."
     }
   }
 
-  private def parenthesize(name: String, exprs: Expr*): String = (name :: exprs.toList.map(print)).mkString("(", " ", ")")
+  def print(value: Value): String = print(0, value)
 
-  def visitBlockExpr(block: Expr.Block) = {
-    var text = "{ "
-    var first = true
-    import scala.collection.JavaConversions._
-    for (innerStmt <- block.statements) {
-      if (!first) text += "\n"
-      text += print(innerStmt)
-      if (first) first = false
+  def print(indent: Int, value: Value): String = {
+    value match {
+      case Lazy(environment, statements) => {
+        val stmtStrs = statements.map(print(indent + 1, _))
+        environment.shortString + " " + printMaybeIndented(indent, stmtStrs, "{", "\n", "}")
+      }
+      case slang.runtime.Matchbox(rows) => {
+        val rowStrs = rows.map(print(indent + 1, _))
+        printMaybeIndented(indent, rowStrs, "{", "\n", "}")
+      }
+      case Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) => {
+        val rowsStrs = rows.map(print(indent, _))
+        val allRows = rowsStrs ++ extraRow.map(r => List(print(indent + 1, r))).getOrElse(List())
+        val partialArgsStr = if (partialArguments.length == 0) "" else partialArguments.mkString("[", ", ", "]") + " @ "
+        partialArgsStr + innerEnvironment.shortString + "#" + printMaybeIndented(indent, allRows.toList, "{", "\n", "}")
+      }
+      case slang.runtime.SlangList(values) => values.map(print).mkString("[", ", ", "]")
+      case _ => value.toString
     }
-    text += " }"
-    text
   }
 
-  def visitMatchBlockExpr(expr: Nothing) = {
-    var text = "{"
-    text += "\n"
-    import scala.collection.JavaConversions._
-    for (`match` <- expr.matches) {
-      text += "  " + print(`match`) + "\n"
-    }
-    text += "}"
-    text
+  def print(indent: Int, row: (List[Value], Expr)): String = {
+    val (params, expr) = row
+    params.map(print).mkString(" ") + " -> " + print(indent + 1, expr)
   }
 
-  def visitExpressionStmt(stmt: Stmt.Expression) = stmt.expr.accept(this)
-
-  def visitLetStmt(stmt: Stmt.Let) = String.format("let %s = %s", print(stmt.pattern), stmt.init.accept(this))
-
-  def visitPrintStmt(stmt: Stmt.Print) = parenthesize("print", stmt.expr)
-
-  def visitMatchStmt(stmt: Stmt.Match) = {
-    var patternStr = ""
-    import scala.collection.JavaConversions._
-    for (pattern <- stmt.patterns) {
-      patternStr += print(pattern) + " "
-    }
-    patternStr + "-> " + print(stmt.expr)
+  def print(indent: Int, row: MatchboxRow): String = {
+    val MatchboxRow(innerEnvironment, params, result) = row
+    innerEnvironment.shortString + " " + params.map(print).mkString(" ") + " -> " + print(indent, result)
   }
 
-  def visitIdPattern(pattern: Pattern.Id) = pattern.id.lexeme
-
-  def visitIgnorePattern(pattern: Pattern.Ignore) = "_"
-
-  def visitLazyPattern(pattern: Pattern.Lazy) = "{ " + print(pattern.inner) + " }"
-
-  def visitLiteralPattern(pattern: Pattern.Literal) = pattern.literal.lexeme
-
-  def visitSeqPattern(pattern: Nothing) = {
-    var str = "["
-    var first = true
-    import scala.collection.JavaConversions._
-    for (innerPat <- pattern.patterns) {
-      if (first) first = false
-      else str += ", "
-      str += print(innerPat)
-    }
-    str += "]"
-    str
+  def print(indent: Int, row: HashboxRow): String = {
+    val HashboxRow(params, result) = row
+    params.map(print).mkString(" ") + " -> " + print(indent, result)
   }
 
-  def visitSpreadPattern(pattern: Pattern.Spread) = pattern.id.lexeme + ".."
-  */
+  private def printMaybeIndented(indent: Int, innerStr: String, start: String, delim: String, end: String): String = {
+    if (innerStr.contains('\n')) {
+      start + delim + INDENT_STR * (indent + 1) + innerStr + delim + INDENT_STR * indent + end
+    } else {
+      start + " " + innerStr + " " + end
+    }
+  }
+
+  private def printMaybeIndented(indent: Int, innerStrs: List[String], start: String, delim: String, end: String): String = {
+    if (innerStrs.length == 1) {
+      printMaybeIndented(indent, innerStrs.head, start, delim, end)
+    } else {
+      innerStrs
+        .map(INDENT_STR * (indent + 1) + _)
+        .mkString(start + delim, delim, delim + INDENT_STR * indent + end)
+    }
+  }
 }

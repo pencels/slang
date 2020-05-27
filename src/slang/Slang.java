@@ -7,6 +7,7 @@ import slang.runtime.Environment;
 import slang.runtime.Interpreter;
 import slang.runtime.SlangNothing;
 import slang.runtime.RuntimeError;
+import slang.runtime.Value;
 
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -102,16 +103,16 @@ public class Slang {
 
         try {
             List<Stmt> stmts = parser.parse();
-            Object value = null;
+            Value value = null;
             for (Stmt stmt : stmts) {
                 value = interpreter.execute(rootEnv, stmt);
 
                 if (stmt instanceof Stmt.Let) {
-                    System.out.println(new AbbreviatedAstPrinter().print(stmt));
+                    System.out.println(new AstPrinter().print(stmt));
                 }
             }
             if (value != SlangNothing.getInstance()) {
-                System.out.println(value.toString());
+                System.out.println(new AstPrinter().print(value));
             }
         } catch (Exception error) {
             error.printStackTrace();

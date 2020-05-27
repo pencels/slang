@@ -4,8 +4,9 @@ import slang.lex.Token
 import slang.parse.Pattern.Literal
 import slang.parse.Stmt.Match
 import slang.parse.{Expr, Pattern, Stmt}
+import slang.parse.AstPrinter
 
-trait Value {
+sealed trait Value {
   def getType: String
 
   /** toSlangString returns the string representation of a value.
