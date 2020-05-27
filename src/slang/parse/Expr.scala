@@ -1,7 +1,6 @@
 package slang.parse
 
 import slang.lex.Token
-import slang.parse.Stmt.Match
 import slang.runtime.Value
 
 sealed trait Expr
@@ -12,9 +11,13 @@ object Expr {
 
   case class Binary(left: Expr, op: Token, right: Expr) extends Expr
 
-  case class Block(statements: List[Stmt]) extends Expr
+  case class Block(expr: Expr) extends Expr
 
-  case class Matchbox(matches: List[Match]) extends Expr
+  case class Matchbox(rows: List[MatchRow]) extends Expr
+
+  case class MatchRow(patterns: List[Pattern], expr: Expr) extends Expr {
+    def isHashable: Boolean = patterns forall { _.isHashable }
+  }
 
   case class Call(left: Expr, args: List[Expr]) extends Expr
 
@@ -29,6 +32,12 @@ object Expr {
   case class SlangList(elements: List[Expr]) extends Expr
 
   case class Prefix(op: Token, expr: Expr) extends Expr
+
+  case class Print(expr: Expr) extends Expr
+
+  case class Let(pattern: Pattern, init: Expr) extends Expr
+
+  case class Seq(exprs: List[Expr]) extends Expr
 
 }
 

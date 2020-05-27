@@ -1,9 +1,10 @@
 package slang.runtime
 
 import slang.lex.TokenType
-import slang.parse.{Expr, Pattern, Stmt}
+import slang.parse.{Expr, Pattern}
 
 import scala.annotation.tailrec
+import slang.lex.TokenType._
 
 object Interpreter {
   val TRUE_ATOM: Value = Atom("true")
@@ -11,32 +12,14 @@ object Interpreter {
 }
 
 class Interpreter {
-  def interpret(env: Environment, statements: List[Stmt]): Value = {
+  def interpret(env: Environment, exprs: List[Expr]): Value = {
     var ret: Value = SlangNothing
 
-    for (stmt <- statements) {
-      ret = execute(env, stmt)
+    for (expr <- exprs) {
+      ret = eval(env, expr)
     }
 
     ret
-  }
-
-  def execute(env: Environment, stmt: Stmt): Value = {
-    stmt match {
-      case Stmt.Expression(expr) => strictEval(env, expr)
-      case Stmt.Let(pattern, init) => {
-        val value = eval(env, init)
-
-        // TODO(michael): If we get types, we can verify the pattern is irrefutable first.
-        if (!assign(env, pattern, Thunk.from(value))) {
-          throw new FailedMatchException(pattern, value)
-        }
-
-        SlangNothing
-      }
-      case Stmt.Print(expr) => println(strictEval(env, expr).toSlangString); SlangNothing
-      case Stmt.Match(_, _) => ??? // Should never reach this ???
-    }
   }
 
   /** Convenience for strictCoerce(eval(env, exp)) */
@@ -44,7 +27,7 @@ class Interpreter {
 
   /** Evaluate a lazy explicitly */
   def strictCoerce(value: Value): Value = value match {
-    case Lazy(env, statements) => interpret(new Environment(env), statements)
+    case Lazy(env, expr) => eval(new Environment(env), expr)
     case x => x
   }
 
@@ -75,14 +58,40 @@ class Interpreter {
     case post: Expr.Postfix => evalPostfixExpr(env, post)
     case Expr.SlangList(exprs) => SlangList(exprs.map(eval(env, _)))
     case unary: Expr.Prefix => evalPrefixOperator(env, unary)
-    case Expr.Block(statements) => Lazy(env, statements)
+    case Expr.Block(expr) => Lazy(env, expr)
     case Expr.Matchbox(matches) => Matchbox.toMatchboxOrHashbox(env, matches)
+    case Expr.Let(pattern, init) => {
+      val value = eval(env, init)
+
+      // TODO(michael): If we get types, we can verify the pattern is irrefutable first.
+      if (!assign(env, pattern, Thunk.from(value))) {
+        throw new FailedMatchException(pattern, value)
+      }
+
+      SlangNothing
+    }
+    case Expr.Print(expr) => println(strictEval(env, expr).toSlangString); SlangNothing
+    case Expr.MatchRow(_, _) => ??? // Should never reach this ???
+    case Expr.Seq(exprs) => {
+      var value: Value = SlangNothing
+      for (expr <- exprs) {
+        value = strictEval(env, expr)
+      }
+      value
+    }
   }
 
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
+    val op = expr.op
+
+    // TODO(chris): Write a compiler pass or parselet which transforms binary ';' exprs into Expr.Seq.
+    if (op.opType == TokenType.SEMI) {
+      strictEval(env, expr.left)
+      return strictEval(env, expr.right)
+    }
+
     val left = strictEval(env, expr.left)
     val right = strictEval(env, expr.right)
-    val op = expr.op
 
     op.opType match {
       case TokenType.AT => call(env, right, List(left))
@@ -150,7 +159,19 @@ class Interpreter {
     }
   }
 
-  def evalPrefixOperator(env: Environment, unary: Expr.Prefix): Value = ???
+  def evalPrefixOperator(env: Environment, expr: Expr.Prefix): Value = {
+    expr.op.opType match {
+      case MINUS => {
+        val value = strictEval(env, expr.expr).tryAsDouble(expr.op)
+        Number(-value)
+      }
+      case PLUS => {
+        val value = strictEval(env, expr.expr).tryAsDouble(expr.op)
+        Number(value)
+      }
+      case _ => ???
+    }
+  }
 
   @tailrec
   final def call(env: Environment, callee: Value, args: List[Value]): Value = {

@@ -28,12 +28,11 @@ public class Parser {
         registerAtom(STRING_INTERP_START, new StringInterpolationParselet());
         registerAtom(ATOM, new LiteralParselet());
         registerAtom(LEFT_CURLY, new BlockParselet());
-        registerAtom(LEFT_BRACKET, new SeqParselet());
+        registerAtom(LEFT_BRACKET, new ListParselet());
         registerAtom(NOTHING, new LiteralParselet());
         registerAtom(TRUE, new LiteralParselet());
         registerAtom(FALSE, new LiteralParselet());
 
-        //register(EQ, new AssignmentParselet());
         prefix(MINUS);
         prefix(PLUS);
         prefix(BANG);
@@ -51,8 +50,12 @@ public class Parser {
         binary(GT, Precedence.CONDITIONAL, false);
         binary(GE, Precedence.CONDITIONAL, false);
         binary(AT, Precedence.APPLY, false);
+        binary(SEMI, Precedence.SEQUENCE, false);
 
         postfix(BANG);
+
+        register(PRINT, new PrintParselet());
+        register(LET, new LetParselet());
 
         register(NEWLINE, (PrefixParselet) new SkipParselet());
         register(NEWLINE, (InfixParselet) new SkipParselet());
@@ -87,45 +90,22 @@ public class Parser {
         register(token, new PostfixOpParselet());
     }
 
-    public List<Stmt> parse() {
-        List<Stmt> statements = new ArrayList<>();
+    public List<Expr> parse() {
+        List<Expr> exprs = new ArrayList<>();
         while (!isAtEnd()) {
-            skipNewlines(); // Consume any empty lines before trying to parse a stmt.
+            skipNewlines(); // Consume any empty lines before trying to parse an expr.
             if (isAtEnd()) break;
-            statements.add(statement());
+            exprs.add(expression());
             if (isAtEnd()) break;
-            if (!match(NEWLINE, SEMI)) {
-                throw new ParseException(peek(), "Expect newline or semicolon after statement.");
+            if (!match(NEWLINE)) {
+                throw new ParseException(peek(), "Expect newline after expr.");
             }
         }
-        return statements;
+        return exprs;
     }
 
     void skipNewlines() {
         while (match(NEWLINE)) ;
-    }
-
-    Stmt statement() {
-        if (match(LET)) return letStatement();
-        if (match(PRINT)) return printStatement();
-        return expressionStatement();
-    }
-
-    private Stmt printStatement() {
-        Expr expr = expression();
-        return new Stmt.Print(expr);
-    }
-
-    private Stmt letStatement() {
-        Pattern pattern = pattern();
-        consume(EQ, "Expect `=`.");
-        Expr expr = expression();
-        return new Stmt.Let(pattern, expr);
-    }
-
-    private Stmt expressionStatement() {
-        Expr expr = expression();
-        return new Stmt.Expression(expr);
     }
 
     Token peek() {

@@ -1,6 +1,5 @@
 package slang.parse
 import slang.parse.Expr._
-import slang.parse.Stmt._
 import slang.parse.Pattern._
 import slang.runtime._
 
@@ -20,7 +19,7 @@ class AstPrinter {
     expr match {
       case Assign(left, right) => print(left) + " = " + print(indent, right)
       case Binary(left, op, right) => print(left) + " " + op.lexeme + " " + print(right)
-      case Block(statements) => printMaybeIndented(indent, statements.map(print(indent + 1, _)), "{", "\n", "}")
+      case Block(expr) => printMaybeIndented(indent, print(indent + 1, expr), "{", "\n", "}")
       case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent + 1, _)), "{", "\n", "}")
       case Call(left, args) => (left :: args).map(print(indent, _)).mkString(" ")
       case Grouping(inner) => "(" + print(inner) + ")"
@@ -29,17 +28,10 @@ class AstPrinter {
       case Postfix(expr, op) => print(expr) + op.lexeme
       case Expr.SlangList(elements) => elements.map(print).mkString("[", ", ", "]")
       case Prefix(op, expr) => op.lexeme + print(expr)
-    }
-  }
-
-  def print(stmt: Stmt): String = print(0, stmt)
-
-  def print(indent: Int, stmt: Stmt): String = {
-    stmt match {
-      case Expression(expr) => print(indent, expr)
       case Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
       case Print(expr) => "print " + print(indent, expr)
-      case Match(patterns, expr) => patterns.map(print).mkString(" ") + " -> " + print(indent, expr)
+      case MatchRow(patterns, expr) => patterns.map(print).mkString(" ") + " -> " + print(indent, expr)
+      case Seq(exprs) => exprs.map(print(indent, _)).mkString(" ; ")
     }
   }
 
@@ -58,9 +50,8 @@ class AstPrinter {
 
   def print(indent: Int, value: Value): String = {
     value match {
-      case Lazy(environment, statements) => {
-        val stmtStrs = statements.map(print(indent + 1, _))
-        environment.shortString + " " + printMaybeIndented(indent, stmtStrs, "{", "\n", "}")
+      case Lazy(environment, expr) => {
+        environment.shortString + " " + printMaybeIndented(indent, print(indent + 1, expr), "{", "\n", "}")
       }
       case slang.runtime.Matchbox(rows) => {
         val rowStrs = rows.map(print(indent + 1, _))

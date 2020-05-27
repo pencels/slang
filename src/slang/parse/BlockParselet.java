@@ -37,9 +37,9 @@ public class BlockParselet implements PrefixParselet {
 
     private Pair<Expr, ParseException> tryParseBlock(Parser parser) {
         try {
-            List<Stmt> statements = parseStatements(parser);
+            List<Expr> exprs = parseExprLines(parser);
             parser.consume(RIGHT_CURLY, "Expect `}` at end of block.");
-            return new Pair(new Expr.Block(scala.jdk.CollectionConverters.ListHasAsScala(statements).asScala().toList()), null);
+            return new Pair(new Expr.Block(new Expr.Seq(scala.jdk.CollectionConverters.ListHasAsScala(exprs).asScala().toList())), null);
         } catch (ParseException e) {
             return new Pair(null, e);
         }
@@ -47,7 +47,7 @@ public class BlockParselet implements PrefixParselet {
 
     private Pair<Expr, ParseException> tryParseMatchBlock(Parser parser) {
         try {
-            List<Stmt.Match> matches = parseMatchStatements(parser);
+            List<Expr.MatchRow> matches = parseMatchRows(parser);
             parser.consume(RIGHT_CURLY, "Expect `}` at end of block.");
 
             // Sort by size so that shorter argument patterns go first.
@@ -73,17 +73,17 @@ public class BlockParselet implements PrefixParselet {
         return patterns;
     }
 
-    private Stmt.Match parseMatch(Parser parser) {
+    private Expr.MatchRow parseMatch(Parser parser) {
         List<Pattern> patterns = parseMatchParams(parser);
 
         parser.consume(ARROW, "Expect -> after pattern.");
 
         Expr expr = parser.expression();
-        return new Stmt.Match(scala.jdk.CollectionConverters.ListHasAsScala(patterns).asScala().toList(), expr);
+        return new Expr.MatchRow(scala.jdk.CollectionConverters.ListHasAsScala(patterns).asScala().toList(), expr);
     }
 
-    private List<Stmt.Match> parseMatchStatements(Parser parser) {
-        List<Stmt.Match> matches = new ArrayList<>();
+    private List<Expr.MatchRow> parseMatchRows(Parser parser) {
+        List<Expr.MatchRow> matches = new ArrayList<>();
         while (!parser.check(RIGHT_CURLY)) {
             matches.add(parseMatch(parser));
             if (parser.check(RIGHT_CURLY)) break;
@@ -95,16 +95,16 @@ public class BlockParselet implements PrefixParselet {
         return matches;
     }
 
-    private List<Stmt> parseStatements(Parser parser) {
-        List<Stmt> statements = new ArrayList<>();
-        while (!parser.check(RIGHT_CURLY) && !parser.isAtEnd()) {
-            parser.skipNewlines();
-            statements.add(parser.statement());
+    private List<Expr> parseExprLines(Parser parser) {
+        List<Expr> exprs = new ArrayList<>();
+        while (!parser.check(RIGHT_CURLY)) {
+            exprs.add(parser.expression());
             if (parser.check(RIGHT_CURLY)) break;
-            if (!parser.match(NEWLINE, SEMI)) {
-                throw new ParseException(parser.peek(), "Expect newline or semicolon after statement.");
+            if (!parser.match(NEWLINE)) {
+                throw new ParseException(parser.peek(), "Expect newline to separate block exprs.");
             }
+            parser.skipNewlines();
         }
-        return statements;
+        return exprs;
     }
 }

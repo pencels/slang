@@ -85,8 +85,8 @@ public class Slang {
                 List<Token> tokens = lexer.lex();
                 Parser parser = new Parser(tokens);
 
-                for (Stmt stmt : parser.parse()) {
-                    System.out.println(new AstPrinter().print(stmt));
+                for (Expr expr : parser.parse()) {
+                    System.out.println(new AstPrinter().print(expr));
                 }
 
                 continue;
@@ -102,13 +102,13 @@ public class Slang {
         Parser parser = new Parser(tokens);
 
         try {
-            List<Stmt> stmts = parser.parse();
+            List<Expr> exprs = parser.parse();
             Value value = null;
-            for (Stmt stmt : stmts) {
-                value = interpreter.execute(rootEnv, stmt);
+            for (Expr expr : exprs) {
+                value = interpreter.strictEval(rootEnv, expr);
 
-                if (stmt instanceof Stmt.Let) {
-                    System.out.println(new AstPrinter().print(stmt));
+                if (expr instanceof Expr.Let) {
+                    System.out.println(new AstPrinter().print(expr));
                 }
             }
             if (value != SlangNothing.getInstance()) {

@@ -13,6 +13,7 @@ public class BinaryOpParselet implements InfixParselet {
 
     @Override
     public Expr parse(Parser parser, Expr left, Token token) {
+        // TODO(chris): Skip newlines here???
         Expr right = parser.expression(precedence - (isRight ? 1 : 0));
         return new Expr.Binary(left, token, right);
     }
