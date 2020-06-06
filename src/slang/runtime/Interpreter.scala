@@ -25,10 +25,13 @@ class Interpreter {
   /** Convenience for strictCoerce(eval(env, exp)) */
   def strictEval(env: Environment, expr: Expr): Value = strictCoerce(eval(env, expr))
 
-  /** Evaluate a lazy explicitly */
-  def strictCoerce(value: Value): Value = value match {
-    case Lazy(env, expr) => eval(new Environment(env), expr)
-    case x => x
+  /** Evaluate a lazy value recursively until reaching a non-lazy value. */
+  @tailrec
+  final def strictCoerce(value: Value): Value  = {
+    value match {
+      case Lazy(env, expr) => strictCoerce(eval(new Environment(env), expr))
+      case _ => value
+    }
   }
 
   /** Evaluate a thunk explicitly, or uses the cached value if it has been evaluated once. */
@@ -70,12 +73,12 @@ class Interpreter {
 
       SlangNothing
     }
-    case Expr.Print(expr) => println(strictEval(env, expr).toSlangString); SlangNothing
+    case Expr.Print(expr) => println(eval(env, expr).toSlangString); SlangNothing
     case Expr.MatchRow(_, _) => ??? // Should never reach this ???
     case Expr.Seq(exprs) => {
       var value: Value = SlangNothing
       for (expr <- exprs) {
-        value = strictEval(env, expr)
+        value = eval(env, expr)
       }
       value
     }
@@ -86,8 +89,8 @@ class Interpreter {
 
     // TODO(chris): Write a compiler pass or parselet which transforms binary ';' exprs into Expr.Seq.
     if (op.opType == TokenType.SEMI) {
-      strictEval(env, expr.left)
-      return strictEval(env, expr.right)
+      eval(env, expr.left)
+      return eval(env, expr.right)
     }
 
     val left = strictEval(env, expr.left)
@@ -160,14 +163,21 @@ class Interpreter {
   }
 
   def evalPrefixOperator(env: Environment, expr: Expr.Prefix): Value = {
+    val innerExpr = expr.expr
     expr.op.opType match {
       case MINUS => {
-        val value = strictEval(env, expr.expr).tryAsDouble(expr.op)
+        val value = strictEval(env, innerExpr).tryAsDouble(expr.op)
         Number(-value)
       }
       case PLUS => {
-        val value = strictEval(env, expr.expr).tryAsDouble(expr.op)
+        val value = strictEval(env, innerExpr).tryAsDouble(expr.op)
         Number(value)
+      }
+      case AMPERSAND => {
+        Lazy(env, innerExpr)
+      }
+      case STAR => {
+        strictEval(env, innerExpr)
       }
       case _ => ???
     }

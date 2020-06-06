@@ -125,6 +125,9 @@ public class Lexer {
                     addToken(BANG);
                 }
                 break;
+            case '&':
+                addToken(AMPERSAND);
+                break;
             case '|':
                 addToken(PIPE);
                 break;
