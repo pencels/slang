@@ -105,7 +105,7 @@ public class Slang {
             List<Expr> exprs = parser.parse();
             Value value = null;
             for (Expr expr : exprs) {
-                value = interpreter.strictEval(rootEnv, expr);
+                value = interpreter.eval(rootEnv, expr);
 
                 if (expr instanceof Expr.Let) {
                     System.out.println(new AstPrinter().print(expr));

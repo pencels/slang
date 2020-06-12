@@ -39,7 +39,7 @@ class AstPrinter {
     pattern match {
       case Pattern.Id(name) => name.lexeme
       case Ignore(token) => "_"
-      case Strict(inner) => "{ " + print(inner) + " }"
+      case Strict(inner, full) => (if (full) "!" else "") + "{ " + print(inner) + " }"
       case Pattern.Literal(value) => value.toString
       case Pattern.SlangList(patterns) => patterns.map(print).mkString("[", ", ", "]")
       case Spread(name) => name.lexeme + ".."

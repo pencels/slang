@@ -1,21 +1,29 @@
 let if = {
-    :true then _  -> then
-    :false _ else -> else
+    :true then _  -> *then
+    :false _ else -> *else
 }
 
 let times = {
     0 _    -> nothing
-    n body -> *body; times (n - 1) body
+    n body -> *!body; times (n - 1) body
 }
 
 let while = {
     :false _  -> nothing
-    cond body -> *body; while cond body
+    cond body -> *!body; while cond body
+}
+
+let loop = {
+    body -> *!body; loop body
 }
 
 let eval = { { x } -> x }
 -- Could also be written like:
 -- let eval = { x -> *x }
+
+let eval_full = { !{ x } -> x }
+-- Could also be written like:
+-- let eval_full = { x -> *!x }
 
 let memoize = {
     let __memo = :None
@@ -52,7 +60,7 @@ let __primitives__ = memoize {
 
     let list_bindings = ref {
         list :map f -> map f list
-        list :foreach f -> ( list :map { x -> *(f x) }; nothing )
+        list :foreach f -> ( list :map { x -> *!(f x) }; nothing )
 
         []       :len -> 0
         [_, t..] :len -> 1 + t :len
@@ -88,7 +96,7 @@ let __primitives__ = memoize {
         start :to end -> if (start > end) [] { [start] + (start + 1) :to end }
 
         0 :times _ -> nothing
-        n :times body -> *body; (n - 1) :times body
+        n :times body -> *!body; (n - 1) :times body
 
         _ :type -> "Number"
     }

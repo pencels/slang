@@ -41,11 +41,13 @@ public class Parser {
         prefix(BANG);
         prefix(AMPERSAND);
         prefix(STAR);
+        prefix(STAR_BANG);
 
         binary(PLUS, Precedence.SUM, false);
         binary(MINUS, Precedence.SUM, false);
         binary(STAR, Precedence.PRODUCT, false);
         binary(SLASH, Precedence.PRODUCT, false);
+        binary(PERCENT, Precedence.PRODUCT, false);
         binary(DOT, Precedence.CALL, false);
         binary(DOTDOT, Precedence.CONDITIONAL, false);
         binary(EQEQ, Precedence.CONDITIONAL, false);
@@ -240,8 +242,15 @@ public class Parser {
             Value value = LiteralParselet.valueFromToken(lit);
             return new Pattern.Literal(value);
         }
-        if (match(AMPERSAND)) return strictPattern();
-        if (match(LEFT_CURLY)) return strictBlockPattern();
+        if (match(AMPERSAND)) return strictPattern(false);
+        if (match(AMPERSAND_BANG)) return strictPattern(true);
+        if (match(BANG)) {
+            if (match(LEFT_CURLY)) {
+                return strictBlockPattern(true);
+            }
+            throw new ParseException(peek(), "Expected strict block pattern { ... } after '!'.");
+        }
+        if (match(LEFT_CURLY)) return strictBlockPattern(false);
         if (match(LEFT_BRACKET)) return listPattern();
         if (match(IDENTIFIER)) {
             Token id = previous();
@@ -256,19 +265,19 @@ public class Parser {
         throw new ParseException(peek(), "Encountered non-pattern token.");
     }
 
-    private Pattern strictBlockPattern() {
-        Pattern inner = strictPattern();
+    private Pattern strictBlockPattern(boolean full) {
+        Pattern inner = strictPattern(full);
         consume(RIGHT_CURLY, "Expect '}' to close block pattern.");
         return inner;
     }
 
-    private Pattern strictPattern() {
+    private Pattern strictPattern(boolean full) {
         Token token = previous();
         Pattern inner = pattern();
         if (!(inner instanceof Pattern.Ignore || inner instanceof Pattern.Id)) {
             throw new ParseException(token, "Lazy pattern must be _ or identifier.");
         }
-        return new Pattern.Strict(inner);
+        return new Pattern.Strict(inner, full);
     }
 
     public Pattern listPattern() {

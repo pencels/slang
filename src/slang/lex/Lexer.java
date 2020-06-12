@@ -126,7 +126,11 @@ public class Lexer {
                 }
                 break;
             case '&':
-                addToken(AMPERSAND);
+                if (match('!')) {
+                    addToken(AMPERSAND_BANG);
+                } else {
+                    addToken(AMPERSAND);
+                }
                 break;
             case '|':
                 addToken(PIPE);
@@ -172,10 +176,17 @@ public class Lexer {
                 addToken(PLUS);
                 break;
             case '*':
-                addToken(STAR);
+                if (match('!')) {
+                    addToken(STAR_BANG);
+                } else {
+                    addToken(STAR);
+                }
                 break;
             case '/':
                 addToken(SLASH);
+                break;
+            case '%':
+                addToken(PERCENT);
                 break;
             case '=':
                 if (match('=')) {
