@@ -1,20 +1,25 @@
 let if = {
+    :true then _  -> then
+    :false _ else -> else
+}
+
+let if_unwrap = {
     :true then _  -> *then
     :false _ else -> *else
 }
 
 let times = {
     0 _    -> nothing
-    n body -> *!body; times (n - 1) body
+    n body -> body; times (n - 1) body
 }
 
 let while = {
     :false _  -> nothing
-    cond body -> *!body; while cond body
+    cond body -> body; while cond body
 }
 
 let loop = {
-    body -> *!body; loop body
+    body -> body; loop body
 }
 
 let eval = { { x } -> x }
@@ -29,7 +34,7 @@ let memoize = {
     let __memo = :None
     {
         x -> {
-            if (__memo == :None) {
+            if_unwrap (__memo == :None) {
                 let v = *x
                 __memo = [:Some, v]
                 v
@@ -96,7 +101,7 @@ let __primitives__ = memoize {
         start :to end -> if (start > end) [] { [start] + (start + 1) :to end }
 
         0 :times _ -> nothing
-        n :times body -> *!body; (n - 1) :times body
+        n :times body -> body; (n - 1) :times body
 
         _ :type -> "Number"
     }

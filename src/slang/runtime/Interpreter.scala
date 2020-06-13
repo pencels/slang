@@ -51,7 +51,7 @@ class Interpreter {
       val value = eval(env, right)
       // NOTE(michael): I know, wrapping this in a thunk is kinda ugly here, but it's for a good cause.
       if (!assign(env, left, Thunk.from(value), define = false)) throw new RuntimeError(null, "Match failed.")
-      value
+      SlangNothing
     case bin: Expr.Binary => evalBinExpr(env, bin)
     case Expr.Call(callee, argExprs) =>
       val closure = eval(env, callee)
@@ -78,11 +78,14 @@ class Interpreter {
     case Expr.Print(expr) => println(eval(env, expr).toSlangString); SlangNothing
     case Expr.MatchRow(_, _) => ??? // Should never reach this ???
     case Expr.Seq(exprs) => {
-      var value: Value = SlangNothing
-      for (expr <- exprs) {
-        value = eval(env, expr)
+      if (exprs.isEmpty) {
+        SlangNothing
+      } else {
+        for (expr <- exprs.init) {
+          strictEval(env, expr, full = true)
+        }
+        eval(env, exprs.last)
       }
-      value
     }
   }
 
@@ -91,7 +94,7 @@ class Interpreter {
 
     // TODO(chris): Write a compiler pass or parselet which transforms binary ';' exprs into Expr.Seq.
     if (op.opType == TokenType.SEMI) {
-      eval(env, expr.left)
+      strictEval(env, expr.left, full = true)
       return eval(env, expr.right)
     }
 
