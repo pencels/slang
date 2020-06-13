@@ -30,21 +30,21 @@ let eval_full = { !{ x } -> x }
 -- Could also be written like:
 -- let eval_full = { x -> *!x }
 
-let memoize = {
-    let __memo = :None
+let memoize = (
+    let memo = :None
     {
-        x -> {
-            if_unwrap (__memo == :None) {
-                let v = *x
-                __memo = [:Some, v]
+        lazy -> {
+            if_unwrap (memo == :None) {
+                let v = *lazy
+                memo = [:Some, v]
                 v
             } {
-                let [_, v] = __memo
+                let [_, v] = memo
                 v
             }
         }
     }
-}
+)
 
 let ref = {
     val -> {
@@ -65,7 +65,7 @@ let __primitives__ = memoize {
 
     let list_bindings = ref {
         list :map f -> map f list
-        list :foreach f -> ( list :map { x -> *!(f x) }; nothing )
+        list :foreach f -> list :map { x -> *!(f x) }; nothing
 
         []       :len -> 0
         [_, t..] :len -> 1 + t :len

@@ -57,7 +57,7 @@ class Interpreter {
       val closure = eval(env, callee)
       val args = argExprs.map(eval(env, _))
       call(env, closure, args)
-    case Expr.Grouping(inner) => eval(env, inner)
+    case Expr.Grouping(inner) => eval(new Environment(env), inner) // Groupings spawn a new env.
     case Expr.Id(name) => env.get(name)
     case Expr.Literal(value) => value
     case post: Expr.Postfix => evalPostfixExpr(env, post)

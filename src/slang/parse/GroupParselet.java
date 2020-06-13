@@ -18,6 +18,6 @@ public class GroupParselet implements PrefixParselet {
         }
 
         // If there are 0 or multiple exprs, treat like a sequence of exprs.
-        return new Expr.Seq(scala.jdk.CollectionConverters.ListHasAsScala(exprs).asScala().toList());
+        return new Expr.Grouping(new Expr.Seq(scala.jdk.CollectionConverters.ListHasAsScala(exprs).asScala().toList()));
     }
 }
