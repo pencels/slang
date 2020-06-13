@@ -37,12 +37,25 @@ class Interpreter {
   }
 
   /** Evaluate a thunk explicitly, or uses the cached value if it has been evaluated once. */
-  def strictCoerceThunk(thunk: Thunk, full: Boolean = false): Value = thunk match {
-    case Thunk(Some(value), _) => value
-    case Thunk(_, unevaluatedValue) => {
-      val value = strictCoerce(unevaluatedValue, full)
-      thunk.cachedValue = Some(value)
-      value
+  def strictCoerceThunk(thunk: Thunk, full: Boolean = false): Value = {
+    val Thunk(maybeFullStrictValue, maybeStrictValue, unevaluatedValue) = thunk
+
+    // Preemptively get the non-full strict value -- this is necessary for either full/non-full strict eval.
+    val strictValue = maybeStrictValue getOrElse {
+      val strictValue = strictCoerce(unevaluatedValue)
+      thunk.strictValue = Some(strictValue)
+      strictValue
+    }
+
+    // Eval full if needed, otherwise return the non-full strict value.
+    if (full) {
+      maybeFullStrictValue getOrElse {
+        val fullStrictValue = strictCoerce(strictValue, full = true)
+        thunk.fullStrictValue = Some(fullStrictValue)
+        fullStrictValue
+      }
+    } else {
+      strictValue
     }
   }
 
@@ -220,7 +233,7 @@ class Interpreter {
           env.set(id.lexeme, arg.unevaluatedValue)
         true
       case _: Pattern.Ignore => true
-      case Pattern.Strict(inner, full) => assign(env, inner, Thunk.fromStrict(strictCoerceThunk(arg, full)), define)
+      case Pattern.Strict(inner, full) => assign(env, inner, Thunk.from(strictCoerceThunk(arg, full)), define)
       case Pattern.Literal(value) => value == strictCoerceThunk(arg, full = true)
       case Pattern.SlangList(patterns) =>
         strictCoerceThunk(arg, full = true) match {
