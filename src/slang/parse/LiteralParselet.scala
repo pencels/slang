@@ -5,17 +5,12 @@ import slang.runtime.{Atom, Interpreter, Number, SlangNothing, SlangString, Valu
 
 object LiteralParselet {
   def valueFromToken(token: Token): Value = {
-    token.opType match {
-      case TokenType.NOTHING => SlangNothing
-      case TokenType.TRUE => Interpreter.TRUE_ATOM
-      case TokenType.FALSE => Interpreter.FALSE_ATOM
-      case TokenType.ATOM => Atom(token.value.asInstanceOf[String])
-      case _ =>
-        token.value match {
-          case str: String => SlangString(str)
-          case d: java.lang.Double => Number(d)
-          case _ => throw new ParseException(token, "Cannot derive value for literal.")
-        }
+    token.ty match {
+      case TokenType.Nothing => SlangNothing
+      case TokenType.Atom(name) => Atom(name)
+      case TokenType.String(value) => SlangString(value)
+      case TokenType.Number(value) => Number(value)
+      case ty => throw new ParseException(token, s"Cannot derive value from non-literal token type ${ty}.")
     }
   }
 }

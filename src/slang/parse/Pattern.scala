@@ -1,6 +1,6 @@
 package slang.parse
 
-import slang.lex.Token
+import slang.lex.{Token, TokenType}
 import slang.runtime.{Environment, Value}
 
 sealed trait Pattern {
@@ -39,6 +39,6 @@ object Pattern {
   }
 
   case class Spread(name: Token) extends Pattern {
-    override def toSlangString: String = name.lexeme + ".."
+    override def toSlangString: String = name.lexeme
   }
 }
