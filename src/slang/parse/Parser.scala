@@ -47,14 +47,14 @@ class Parser(val tokens: List[Token]) {
                 exprs = expression() :: exprs
             }
             skipComments
-            if (!isAtEnd && !expect(TokenType.Newline)) {
+            if (!isAtEnd && !consume(TokenType.Newline)) {
                 throw new ParseException(peek, "Expect newline after an expression.")
             }
         }
         exprs.reverse
     }
 
-    final def skipComments: Unit = peek.ty match {
+    def skipComments: Unit = peek.ty match {
         case TokenType.Comment(_) =>
             advance
         case _ =>
@@ -78,7 +78,7 @@ class Parser(val tokens: List[Token]) {
         previous
     }
 
-    def expect(ty: TokenType with PlainToken*): Boolean = {
+    def consume(ty: TokenType with PlainToken*): Boolean = {
         if (ty.exists(_ == peek.ty)) {
             advance
             true
@@ -93,7 +93,7 @@ class Parser(val tokens: List[Token]) {
 
     private def isAtEnd: Boolean = peek.ty == TokenType.Eof
 
-    def consume(expected: TokenType, errorMessage: String) = {
+    def expect(expected: TokenType, errorMessage: String) = {
         if (peek.ty != expected) {
             throw new ParseException(previous, errorMessage)
         }
@@ -167,7 +167,7 @@ class Parser(val tokens: List[Token]) {
     def expression(precedence: Int = 0): Expr = {
         tryParse(parser => {
             val pat = parser.pattern
-            parser.consume(TokenType.Eq, "Expect '=' after pattern.")
+            parser.expect(TokenType.Eq, "Expect '=' after pattern.")
             val right = parser.expression()
             Expr.Assign(pat, right)
         }) match {
@@ -211,7 +211,7 @@ class Parser(val tokens: List[Token]) {
         while (!check(end)) {
             exprs = expression() :: exprs
             if (check(end)) return exprs.reverse
-            if (!expect(TokenType.Newline)) {
+            if (!consume(TokenType.Newline)) {
                 throw new ParseException(peek, "Expected newline to separate expressions.")
             }
             skipNewlines
@@ -220,52 +220,52 @@ class Parser(val tokens: List[Token]) {
         exprs.reverse
     }
 
-    def expect_number() = peek.ty match {
+    def consumeNumber() = peek.ty match {
         case _: TokenType.Number => advance; true
         case _ => false
     }
     
-    def expect_atom() = peek.ty match {
+    def consumeAtom() = peek.ty match {
         case _: TokenType.Atom => advance; true
         case _ => false
     }
 
-    def expect_string() = peek.ty match {
+    def consumeString() = peek.ty match {
         case _: TokenType.String => advance; true
         case _ => false
     }
 
-    def consume(ty: TokenType with PlainToken, message: String): Unit = {
-        if (!expect(ty)) {
+    def expect(ty: TokenType with PlainToken, message: String): Unit = {
+        if (!consume(ty)) {
             throw new ParseException(peek, message)
         }
     }
 
     def pattern(): Pattern = {
-        if (expect(TokenType.Nothing) || expect_number || expect_atom || expect_string) {
+        if (consume(TokenType.Nothing) || consumeNumber || consumeAtom || consumeString) {
             val value = LiteralParselet.valueFromToken(previous)
             return Pattern.Literal(value)
         }
 
-        if (expect(TokenType.Ampersand)) {
+        if (consume(TokenType.Ampersand)) {
             return strictPattern(false)
         }
-        if (expect(TokenType.AmpersandBang)) {
+        if (consume(TokenType.AmpersandBang)) {
             return strictPattern(true)
         }
 
-        if (expect(TokenType.Bang)) {
-            if (expect(TokenType.LCurly)) {
+        if (consume(TokenType.Bang)) {
+            if (consume(TokenType.LCurly)) {
                 return strictBlockPattern(true)
             }
             throw new ParseException(peek, "Expected strict block pattern { ... } after '!'.")
         }
 
-        if (expect(TokenType.LCurly)) {
+        if (consume(TokenType.LCurly)) {
             return strictBlockPattern(false)
         }
 
-        if (expect(TokenType.LBracket)) {
+        if (consume(TokenType.LBracket)) {
             return listPattern
         }
 
@@ -275,7 +275,7 @@ class Parser(val tokens: List[Token]) {
                 if (name == "_") {
                     return Pattern.Ignore(id)
                 }
-                if (expect(TokenType.DotDot)) {
+                if (consume(TokenType.DotDot)) {
                     return Pattern.Spread(id)
                 } else {
                     return Pattern.Id(id)
@@ -288,7 +288,7 @@ class Parser(val tokens: List[Token]) {
 
     private def strictBlockPattern(full: Boolean): Pattern = {
         val inner = strictPattern(full)
-        consume(TokenType.RCurly, "Expect '}' to close block pattern.")
+        expect(TokenType.RCurly, "Expect '}' to close block pattern.")
         inner
     }
 
@@ -306,10 +306,10 @@ class Parser(val tokens: List[Token]) {
         while (!check(TokenType.RBracket)) {
             patterns = pattern :: patterns
             if (!check(TokenType.RBracket)) {
-                consume(TokenType.Comma, "Expect ',' between list patterns.")
+                expect(TokenType.Comma, "Expect ',' between list patterns.")
             }
         }
-        consume(TokenType.RBracket, "Expect ']' to end list pattern.")
+        expect(TokenType.RBracket, "Expect ']' to end list pattern.")
         Pattern.SlangList(patterns.reverse)
     }
 }

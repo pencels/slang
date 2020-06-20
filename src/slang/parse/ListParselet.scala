@@ -13,10 +13,10 @@ class ListParselet extends PrefixParselet {
             parser.skipNewlines // Allow newlines before elements.
             elements.addOne(parser.expression())
             parser.skipNewlines // Allow newlines after elements.
-            parser.expect(TokenType.Comma, TokenType.Newline)
+            parser.consume(TokenType.Comma, TokenType.Newline)
         }
 
-        parser.consume(TokenType.RBracket, "Expect ']' to end list.");
+        parser.expect(TokenType.RBracket, "Expect ']' to end list.");
         Expr.SlangList(elements.toList)
     }
 }
