@@ -49,18 +49,18 @@ object Slang {
         text += "\n" // Re-append a newline to make the parser happy.
 
         if (text.startsWith(".eg")) {
-            text = loadExample(text.substring(".eg".length))
+            text = loadExample(text.substring(".eg".length).trim())
             interpret(interpreter, rootEnv, text)
         } else if (text.startsWith(".lex_file")) {
-            text = load(text.substring(".lex_file".length))
+            text = load(text.substring(".lex_file".length).trim())
             printTokens(text)
         } else if (text.startsWith(".lex")) {
-            printTokens(text.substring(".lex".length))
+            printTokens(text.substring(".lex".length).trim())
         } else if (text.startsWith(".parse_file")) {
-            text = load(text.substring(".parse_file".length()))
+            text = load(text.substring(".parse_file".length()).trim())
             printAst(text)
         } else if (text.startsWith(".parse")) {
-            printAst(text.substring(".parse".length()))
+            printAst(text.substring(".parse".length()).trim())
         } else {
             interpret(interpreter, rootEnv, text)
         }
@@ -130,12 +130,12 @@ object Slang {
     }
 
     def loadExampleFile(filename: String): String = {
-        val path = FileSystems.getDefault().getPath("examples", filename.trim())
+        val path = FileSystems.getDefault().getPath("examples", filename)
         new String(Files.readAllBytes(path))
     }
 
     def load(filename: String): String = {
-        val path = FileSystems.getDefault().getPath(filename.trim())
+        val path = FileSystems.getDefault().getPath(filename)
         new String(Files.readAllBytes(path))
     }
 
