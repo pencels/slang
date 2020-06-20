@@ -1,6 +1,5 @@
 package slang.parse
 import slang.parse.Expr._
-import slang.parse.Stmt._
 import slang.parse.Pattern._
 import slang.runtime._
 
@@ -20,8 +19,8 @@ class AstPrinter {
     expr match {
       case Assign(left, right) => print(left) + " = " + print(indent, right)
       case Binary(left, op, right) => print(left) + " " + op.lexeme + " " + print(right)
-      case Block(statements) => printMaybeIndented(indent, statements.map(print(indent + 1, _)), "{", "\n", "}")
-      case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent + 1, _)), "{", "\n", "}")
+      case Block(expr) => printMaybeIndented(indent, print(indent + 1, expr), "{", "}")
+      case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent + 1, _)), "{", "", "}")
       case Call(left, args) => (left :: args).map(print(indent, _)).mkString(" ")
       case Grouping(inner) => "(" + print(inner) + ")"
       case Expr.Id(name) => name
@@ -29,17 +28,10 @@ class AstPrinter {
       case Postfix(expr, op) => print(expr) + op.lexeme
       case Expr.SlangList(elements) => elements.map(print).mkString("[", ", ", "]")
       case Prefix(op, expr) => op.lexeme + print(expr)
-    }
-  }
-
-  def print(stmt: Stmt): String = print(0, stmt)
-
-  def print(indent: Int, stmt: Stmt): String = {
-    stmt match {
-      case Expression(expr) => print(indent, expr)
       case Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
       case Print(expr) => "print " + print(indent, expr)
-      case Match(patterns, expr) => patterns.map(print).mkString(" ") + " -> " + print(indent, expr)
+      case MatchRow(patterns, expr) => patterns.map(print).mkString(" ") + " -> " + print(indent, expr)
+      case Seq(exprs) => printSeq(indent, exprs.map(print(indent, _)))
     }
   }
 
@@ -47,7 +39,7 @@ class AstPrinter {
     pattern match {
       case Pattern.Id(name) => name.lexeme
       case Ignore(token) => "_"
-      case Strict(inner) => "{ " + print(inner) + " }"
+      case Strict(inner, full) => (if (full) "!" else "") + "{ " + print(inner) + " }"
       case Pattern.Literal(value) => value.toString
       case Pattern.SlangList(patterns) => patterns.map(print).mkString("[", ", ", "]")
       case Spread(name) => name.lexeme + ".."
@@ -58,9 +50,8 @@ class AstPrinter {
 
   def print(indent: Int, value: Value): String = {
     value match {
-      case Lazy(environment, statements) => {
-        val stmtStrs = statements.map(print(indent + 1, _))
-        environment.shortString + " " + printMaybeIndented(indent, stmtStrs, "{", "\n", "}")
+      case Lazy(environment, expr) => {
+        environment.shortString + " " + printMaybeIndented(indent, print(indent + 1, expr), "{", "}")
       }
       case slang.runtime.Matchbox(rows) => {
         val rowStrs = rows.map(print(indent + 1, _))
@@ -70,7 +61,7 @@ class AstPrinter {
         val rowsStrs = rows.map(print(indent, _))
         val allRows = rowsStrs ++ extraRow.map(r => List(print(indent + 1, r))).getOrElse(List())
         val partialArgsStr = if (partialArguments.length == 0) "" else partialArguments.mkString("[", ", ", "]") + " @ "
-        partialArgsStr + innerEnvironment.shortString + "#" + printMaybeIndented(indent, allRows.toList, "{", "\n", "}")
+        partialArgsStr + innerEnvironment.shortString + " #" + printMaybeIndented(indent, allRows.toList, "{", "", "}")
       }
       case slang.runtime.SlangList(values) => values.map(print).mkString("[", ", ", "]")
       case _ => value.toString
@@ -92,9 +83,9 @@ class AstPrinter {
     params.map(print).mkString(" ") + " -> " + print(indent, result)
   }
 
-  private def printMaybeIndented(indent: Int, innerStr: String, start: String, delim: String, end: String): String = {
+  private def printMaybeIndented(indent: Int, innerStr: String, start: String, end: String): String = {
     if (innerStr.contains('\n')) {
-      start + delim + INDENT_STR * (indent + 1) + innerStr + delim + INDENT_STR * indent + end
+      start + "\n" + INDENT_STR * (indent + 1) + innerStr + "\n" + INDENT_STR * indent + end
     } else {
       start + " " + innerStr + " " + end
     }
@@ -102,11 +93,22 @@ class AstPrinter {
 
   private def printMaybeIndented(indent: Int, innerStrs: List[String], start: String, delim: String, end: String): String = {
     if (innerStrs.length == 1) {
-      printMaybeIndented(indent, innerStrs.head, start, delim, end)
+      printMaybeIndented(indent, innerStrs.head, start, end)
     } else {
       innerStrs
         .map(INDENT_STR * (indent + 1) + _)
-        .mkString(start + delim, delim, delim + INDENT_STR * indent + end)
+        .mkString(start + "\n", delim + "\n", delim + "\n" + INDENT_STR * indent + end)
+    }
+  }
+
+  private def printSeq(indent: Int, innerStrs: List[String]): String = {
+    if (innerStrs.length == 1) {
+      innerStrs.head
+    } else {
+      innerStrs.head + "\n" + 
+      innerStrs.tail
+        .map(INDENT_STR * indent + _)
+        .mkString("", "\n", "")
     }
   }
 }

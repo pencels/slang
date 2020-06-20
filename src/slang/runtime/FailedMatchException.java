@@ -2,7 +2,6 @@ package slang.runtime;
 
 import slang.parse.AstPrinter;
 import slang.parse.Pattern;
-import slang.parse.Stmt;
 
 public class FailedMatchException extends RuntimeException {
     public FailedMatchException(Pattern pattern, Value value) {

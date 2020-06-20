@@ -2,9 +2,9 @@ package slang.runtime
 
 import slang.lex.Token
 import slang.parse.Pattern.Literal
-import slang.parse.Stmt.Match
-import slang.parse.{Expr, Pattern, Stmt}
+import slang.parse.{Expr, Pattern}
 import slang.parse.AstPrinter
+import slang.parse.Expr.MatchRow
 
 sealed trait Value {
   def getType: String
@@ -76,7 +76,7 @@ case class SlangList(values: List[Value]) extends Value {
   override def toString: String = values.map(_.toString).mkString("[", ", ", "]")
 }
 
-case class Lazy(environment: Environment, statements: List[Stmt]) extends Value {
+case class Lazy(environment: Environment, expr: Expr) extends Value {
   override def toString: String = {
     var repr = environment.collapsedString
     repr += " { ... }"
@@ -106,10 +106,10 @@ case class Matchbox(rows: List[MatchboxRow]) extends Value {
 }
 
 object Matchbox {
-  def from(env: Environment, ast: List[Match]): Matchbox =
+  def from(env: Environment, ast: List[MatchRow]): Matchbox =
     Matchbox(ast map { m => MatchboxRow(env, m.patterns, m.expr) })
 
-  def toMatchboxOrHashbox(env: Environment, ast: List[Match]): Value = ast.reverse match {
+  def toMatchboxOrHashbox(env: Environment, ast: List[MatchRow]): Value = ast.reverse match {
     case literalPatterns if isHashboxable(literalPatterns, None) =>
       // NOTE: `literalPatterns` not reversed here, so our final hashmap has first pattern precedence.
       Hashbox.from(env, literalPatterns, None)
@@ -123,7 +123,7 @@ object Matchbox {
    *  2. All of the hashable patterns are the same arity, and
    *  3. The additional non-hashable pattern (if exists) is the same arity.
    */
-  def isHashboxable(literalPatterns: List[Match], extraPattern: Option[Match]): Boolean =
+  def isHashboxable(literalPatterns: List[MatchRow], extraPattern: Option[MatchRow]): Boolean =
     literalPatterns.nonEmpty && literalPatterns.forall(_.isHashable) && sameArity(literalPatterns map {
       _.patterns
     }) && extraPattern.forall(_.patterns.length == literalPatterns.head.patterns.length)
@@ -188,11 +188,11 @@ case class Hashbox(partialArguments: List[Value],
 }
 
 object Hashbox {
-  def from(env: Environment, literalPatterns: List[Match], extraRow: Option[Match]): Value = {
+  def from(env: Environment, literalPatterns: List[MatchRow], extraRow: Option[MatchRow]): Value = {
     val arity = literalPatterns.head.patterns.length
     var hashRows: Map[List[Value], Expr] = Map.empty
 
-    for (Match(patterns, expr) <- literalPatterns) {
+    for (MatchRow(patterns, expr) <- literalPatterns) {
       hashRows += (patterns.map(_.asHashable) -> expr)
     }
 

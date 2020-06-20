@@ -1,9 +1,10 @@
 package slang.runtime
 
 import slang.lex.TokenType
-import slang.parse.{Expr, Pattern, Stmt}
+import slang.parse.{Expr, Pattern}
 
 import scala.annotation.tailrec
+import slang.lex.TokenType._
 
 object Interpreter {
   val TRUE_ATOM: Value = Atom("true")
@@ -11,50 +12,50 @@ object Interpreter {
 }
 
 class Interpreter {
-  def interpret(env: Environment, statements: List[Stmt]): Value = {
+  def interpret(env: Environment, exprs: List[Expr]): Value = {
     var ret: Value = SlangNothing
 
-    for (stmt <- statements) {
-      ret = execute(env, stmt)
+    for (expr <- exprs) {
+      ret = eval(env, expr)
     }
 
     ret
   }
 
-  def execute(env: Environment, stmt: Stmt): Value = {
-    stmt match {
-      case Stmt.Expression(expr) => strictEval(env, expr)
-      case Stmt.Let(pattern, init) => {
-        val value = eval(env, init)
+  /** Convenience for strictCoerce(eval(env, exp)) */
+  def strictEval(env: Environment, expr: Expr, full: Boolean = false): Value = strictCoerce(eval(env, expr), full)
 
-        // TODO(michael): If we get types, we can verify the pattern is irrefutable first.
-        if (!assign(env, pattern, Thunk.from(value))) {
-          throw new FailedMatchException(pattern, value)
-        }
-
-        SlangNothing
-      }
-      case Stmt.Print(expr) => println(strictEval(env, expr).toSlangString); SlangNothing
-      case Stmt.Match(_, _) => ??? // Should never reach this ???
+  /** Evaluate a lazy value recursively until reaching a non-lazy value. */
+  @tailrec
+  final def strictCoerce(value: Value, full: Boolean = false): Value  = {
+    value match {
+      case Lazy(env, expr) =>
+        val value = eval(new Environment(env), expr)
+        if (full) strictCoerce(value, full) else value
+      case _ => value
     }
   }
 
-  /** Convenience for strictCoerce(eval(env, exp)) */
-  def strictEval(env: Environment, expr: Expr): Value = strictCoerce(eval(env, expr))
-
-  /** Evaluate a lazy explicitly */
-  def strictCoerce(value: Value): Value = value match {
-    case Lazy(env, statements) => interpret(new Environment(env), statements)
-    case x => x
-  }
-
   /** Evaluate a thunk explicitly, or uses the cached value if it has been evaluated once. */
-  def strictCoerceThunk(thunk: Thunk): Value = thunk match {
-    case Thunk(Some(value), _) => value
-    case Thunk(_, unevaluatedValue) => {
-      val value = strictCoerce(unevaluatedValue)
-      thunk.cachedValue = Some(value)
-      value
+  def strictCoerceThunk(thunk: Thunk, full: Boolean = false): Value = {
+    val Thunk(maybeFullStrictValue, maybeStrictValue, unevaluatedValue) = thunk
+
+    // Preemptively get the non-full strict value -- this is necessary for either full/non-full strict eval.
+    val strictValue = maybeStrictValue getOrElse {
+      val strictValue = strictCoerce(unevaluatedValue)
+      thunk.strictValue = Some(strictValue)
+      strictValue
+    }
+
+    // Eval full if needed, otherwise return the non-full strict value.
+    if (full) {
+      maybeFullStrictValue getOrElse {
+        val fullStrictValue = strictCoerce(strictValue, full = true)
+        thunk.fullStrictValue = Some(fullStrictValue)
+        fullStrictValue
+      }
+    } else {
+      strictValue
     }
   }
 
@@ -63,26 +64,55 @@ class Interpreter {
       val value = eval(env, right)
       // NOTE(michael): I know, wrapping this in a thunk is kinda ugly here, but it's for a good cause.
       if (!assign(env, left, Thunk.from(value), define = false)) throw new RuntimeError(null, "Match failed.")
-      value
+      SlangNothing
     case bin: Expr.Binary => evalBinExpr(env, bin)
     case Expr.Call(callee, argExprs) =>
       val closure = eval(env, callee)
       val args = argExprs.map(eval(env, _))
       call(env, closure, args)
-    case Expr.Grouping(inner) => eval(env, inner)
+    case Expr.Grouping(inner) => eval(new Environment(env), inner) // Groupings spawn a new env.
     case Expr.Id(name) => env.get(name)
     case Expr.Literal(value) => value
     case post: Expr.Postfix => evalPostfixExpr(env, post)
     case Expr.SlangList(exprs) => SlangList(exprs.map(eval(env, _)))
     case unary: Expr.Prefix => evalPrefixOperator(env, unary)
-    case Expr.Block(statements) => Lazy(env, statements)
+    case Expr.Block(expr) => Lazy(env, expr)
     case Expr.Matchbox(matches) => Matchbox.toMatchboxOrHashbox(env, matches)
+    case Expr.Let(pattern, init) => {
+      val value = eval(env, init)
+
+      // TODO(michael): If we get types, we can verify the pattern is irrefutable first.
+      if (!assign(env, pattern, Thunk.from(value))) {
+        throw new FailedMatchException(pattern, value)
+      }
+
+      SlangNothing
+    }
+    case Expr.Print(expr) => println(eval(env, expr).toSlangString); SlangNothing
+    case Expr.MatchRow(_, _) => ??? // Should never reach this ???
+    case Expr.Seq(exprs) => {
+      if (exprs.isEmpty) {
+        SlangNothing
+      } else {
+        for (expr <- exprs.init) {
+          strictEval(env, expr, full = true)
+        }
+        eval(env, exprs.last)
+      }
+    }
   }
 
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
-    val left = strictEval(env, expr.left)
-    val right = strictEval(env, expr.right)
     val op = expr.op
+
+    // TODO(chris): Write a compiler pass or parselet which transforms binary ';' exprs into Expr.Seq.
+    if (op.opType == TokenType.SEMI) {
+      strictEval(env, expr.left, full = true)
+      return eval(env, expr.right)
+    }
+
+    val left = strictEval(env, expr.left, full = true)
+    val right = strictEval(env, expr.right, full = true)
 
     op.opType match {
       case TokenType.AT => call(env, right, List(left))
@@ -112,6 +142,8 @@ class Interpreter {
         Number(left.tryAsDouble(op) * right.tryAsDouble(op))
       case TokenType.SLASH =>
         Number(left.tryAsDouble(op) / right.tryAsDouble(op))
+      case TokenType.PERCENT => 
+        Number(left.tryAsDouble(op) % right.tryAsDouble(op))
       case TokenType.EQEQ =>
         if (left == right) Interpreter.TRUE_ATOM
         else Interpreter.FALSE_ATOM
@@ -150,11 +182,27 @@ class Interpreter {
     }
   }
 
-  def evalPrefixOperator(env: Environment, unary: Expr.Prefix): Value = ???
+  def evalPrefixOperator(env: Environment, expr: Expr.Prefix): Value = {
+    val innerExpr = expr.expr
+    expr.op.opType match {
+      case MINUS => {
+        val value = strictEval(env, innerExpr, full = true).tryAsDouble(expr.op)
+        Number(-value)
+      }
+      case PLUS => {
+        val value = strictEval(env, innerExpr, full = true).tryAsDouble(expr.op)
+        Number(value)
+      }
+      case AMPERSAND => Lazy(env, innerExpr)
+      case STAR => strictEval(env, innerExpr)
+      case STAR_BANG => strictEval(env, innerExpr, full = true)
+      case _ => ???
+    }
+  }
 
   @tailrec
   final def call(env: Environment, callee: Value, args: List[Value]): Value = {
-    strictCoerce(callee) match {
+    strictCoerce(callee, full = true) match {
       case matchbox: Matchbox => {
         applyMatchbox(matchbox, args) match {
           case (value, Nil) => value
@@ -185,10 +233,10 @@ class Interpreter {
           env.set(id.lexeme, arg.unevaluatedValue)
         true
       case _: Pattern.Ignore => true
-      case Pattern.Strict(inner) => assign(env, inner, Thunk.fromStrict(strictCoerceThunk(arg)), define)
-      case Pattern.Literal(value) => value == strictCoerceThunk(arg)
+      case Pattern.Strict(inner, full) => assign(env, inner, Thunk.from(strictCoerceThunk(arg, full)), define)
+      case Pattern.Literal(value) => value == strictCoerceThunk(arg, full = true)
       case Pattern.SlangList(patterns) =>
-        strictCoerceThunk(arg) match {
+        strictCoerceThunk(arg, full = true) match {
           case SlangList(values) => assignList(env, patterns, values, define)
           case _ => false
         }
@@ -282,7 +330,7 @@ class Interpreter {
     (hashbox.partialArguments ++ args) splitAt hashbox.arity match {
       case (values, remainder) if values.length == hashbox.arity => {
         // We NEED to coerce these values to hash them correctly.
-        val strictValues = values.map(strictCoerce)
+        val strictValues = values.map(strictCoerce(_, full = true))
 
         if (rows.contains(strictValues)) {
           // Cool, we just hash our value and call it a day.

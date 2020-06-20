@@ -3,11 +3,14 @@ package slang.parse;
 import slang.lex.Token;
 import slang.lex.TokenType;
 import slang.runtime.Value;
+import slang.util.Pair;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Stack;
+import java.util.function.Function;
 
 import static slang.lex.TokenType.*;
 
@@ -18,7 +21,7 @@ public class Parser {
     private final List<Token> tokens;
     private int current;
 
-    private int bookmark; // For backtracking on a poor parsing decision.
+    private Stack<Integer> bookmarks = new Stack<>(); // For backtracking on a poor parsing decision.
 
     {
         registerAtom(IDENTIFIER, new IdParselet());
@@ -28,20 +31,23 @@ public class Parser {
         registerAtom(STRING_INTERP_START, new StringInterpolationParselet());
         registerAtom(ATOM, new LiteralParselet());
         registerAtom(LEFT_CURLY, new BlockParselet());
-        registerAtom(LEFT_BRACKET, new SeqParselet());
+        registerAtom(LEFT_BRACKET, new ListParselet());
         registerAtom(NOTHING, new LiteralParselet());
         registerAtom(TRUE, new LiteralParselet());
         registerAtom(FALSE, new LiteralParselet());
 
-        //register(EQ, new AssignmentParselet());
         prefix(MINUS);
         prefix(PLUS);
         prefix(BANG);
+        prefix(AMPERSAND);
+        prefix(STAR);
+        prefix(STAR_BANG);
 
         binary(PLUS, Precedence.SUM, false);
         binary(MINUS, Precedence.SUM, false);
         binary(STAR, Precedence.PRODUCT, false);
         binary(SLASH, Precedence.PRODUCT, false);
+        binary(PERCENT, Precedence.PRODUCT, false);
         binary(DOT, Precedence.CALL, false);
         binary(DOTDOT, Precedence.CONDITIONAL, false);
         binary(EQEQ, Precedence.CONDITIONAL, false);
@@ -51,8 +57,12 @@ public class Parser {
         binary(GT, Precedence.CONDITIONAL, false);
         binary(GE, Precedence.CONDITIONAL, false);
         binary(AT, Precedence.APPLY, false);
+        binary(SEMI, Precedence.SEQUENCE, false);
 
         postfix(BANG);
+
+        register(PRINT, new PrintParselet());
+        register(LET, new LetParselet());
 
         register(NEWLINE, (PrefixParselet) new SkipParselet());
         register(NEWLINE, (InfixParselet) new SkipParselet());
@@ -76,7 +86,7 @@ public class Parser {
     }
 
     private void prefix(TokenType token) {
-        register(token, new PrefixOpParselet());
+        registerAtom(token, new PrefixOpParselet());
     }
 
     private void binary(TokenType token, int precedence, boolean isRight) {
@@ -87,45 +97,22 @@ public class Parser {
         register(token, new PostfixOpParselet());
     }
 
-    public List<Stmt> parse() {
-        List<Stmt> statements = new ArrayList<>();
+    public List<Expr> parse() {
+        List<Expr> exprs = new ArrayList<>();
         while (!isAtEnd()) {
-            skipNewlines(); // Consume any empty lines before trying to parse a stmt.
+            skipNewlines(); // Consume any empty lines before trying to parse an expr.
             if (isAtEnd()) break;
-            statements.add(statement());
+            exprs.add(expression());
             if (isAtEnd()) break;
-            if (!match(NEWLINE, SEMI)) {
-                throw new ParseException(peek(), "Expect newline or semicolon after statement.");
+            if (!match(NEWLINE)) {
+                throw new ParseException(peek(), "Expect newline after expr.");
             }
         }
-        return statements;
+        return exprs;
     }
 
     void skipNewlines() {
         while (match(NEWLINE)) ;
-    }
-
-    Stmt statement() {
-        if (match(LET)) return letStatement();
-        if (match(PRINT)) return printStatement();
-        return expressionStatement();
-    }
-
-    private Stmt printStatement() {
-        Expr expr = expression();
-        return new Stmt.Print(expr);
-    }
-
-    private Stmt letStatement() {
-        Pattern pattern = pattern();
-        consume(EQ, "Expect `=`.");
-        Expr expr = expression();
-        return new Stmt.Let(pattern, expr);
-    }
-
-    private Stmt expressionStatement() {
-        Expr expr = expression();
-        return new Stmt.Expression(expr);
     }
 
     Token peek() {
@@ -172,14 +159,15 @@ public class Parser {
 
     Expr expression(int precedence) {
         // Try with pattern.
-        setBookmark();
-        try {
-            Pattern pat = pattern();
-            consume(EQ, "Expect '=' after pattern.");
-            Expr right = expression();
+        var exprOrErr = tryParse((parser) -> {
+            Pattern pat = parser.pattern();
+            parser.consume(EQ, "Expect '=' after pattern.");
+            Expr right = parser.expression();
             return new Expr.Assign(pat, right);
-        } catch (ParseException e) {
-            goToBookmark();
+        });
+
+        if (exprOrErr.left != null) {
+            return exprOrErr.left;
         }
 
         Token token = advance();
@@ -211,12 +199,41 @@ public class Parser {
         return 0;
     }
 
-    void setBookmark() {
-        bookmark = current;
+    /**
+     * Parses a list of Exprs separated by newlines, looking for the end token
+     * to signal ending the group.
+     * Useful for { ... } and ( ... ) -type expressions.
+     */
+    public List<Expr> parseExprLines(TokenType end) {
+        List<Expr> exprs = new ArrayList<>();
+        while (!check(end)) {
+            exprs.add(expression());
+            if (check(end)) break;
+            if (!match(NEWLINE)) {
+                throw new ParseException(peek(), "Expect newline to separate expressions.");
+            }
+            skipNewlines();
+        }
+        return exprs;
     }
 
-    void goToBookmark() {
-        current = bookmark;
+    private int getCursor() {
+        return current;
+    }
+
+    private void setCursor(int cursor) {
+        current = cursor;
+    }
+
+    /** Tries a parsing path. Rolls back if the action was unsuccessful. */
+    <T> Pair<T, ParseException> tryParse(Function<Parser, T> action) {
+        var cursor = getCursor();
+        try {
+            return new Pair<>(action.apply(this), null);
+        } catch (ParseException e) {
+            setCursor(cursor);
+            return new Pair<>(null, e);
+        }
     }
 
     public Pattern pattern() {
@@ -225,8 +242,16 @@ public class Parser {
             Value value = LiteralParselet.valueFromToken(lit);
             return new Pattern.Literal(value);
         }
+        if (match(AMPERSAND)) return strictPattern(false);
+        if (match(AMPERSAND_BANG)) return strictPattern(true);
+        if (match(BANG)) {
+            if (match(LEFT_CURLY)) {
+                return strictBlockPattern(true);
+            }
+            throw new ParseException(peek(), "Expected strict block pattern { ... } after '!'.");
+        }
+        if (match(LEFT_CURLY)) return strictBlockPattern(false);
         if (match(LEFT_BRACKET)) return listPattern();
-        if (match(LEFT_CURLY)) return lazyPattern();
         if (match(IDENTIFIER)) {
             Token id = previous();
             if ("_".equals(id.lexeme)) return new Pattern.Ignore(id);
@@ -240,14 +265,19 @@ public class Parser {
         throw new ParseException(peek(), "Encountered non-pattern token.");
     }
 
-    private Pattern lazyPattern() {
+    private Pattern strictBlockPattern(boolean full) {
+        Pattern inner = strictPattern(full);
+        consume(RIGHT_CURLY, "Expect '}' to close block pattern.");
+        return inner;
+    }
+
+    private Pattern strictPattern(boolean full) {
         Token token = previous();
         Pattern inner = pattern();
         if (!(inner instanceof Pattern.Ignore || inner instanceof Pattern.Id)) {
             throw new ParseException(token, "Lazy pattern must be _ or identifier.");
         }
-        consume(RIGHT_CURLY, "Expect '}' to close lazy pattern.");
-        return new Pattern.Strict(inner);
+        return new Pattern.Strict(inner, full);
     }
 
     public Pattern listPattern() {

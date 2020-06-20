@@ -7,7 +7,7 @@ import java.util.List;
 
 import static slang.lex.TokenType.*;
 
-public class SeqParselet implements PrefixParselet {
+public class ListParselet implements PrefixParselet {
     @Override
     public Expr parse(Parser parser, Token token) {
 

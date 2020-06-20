@@ -20,7 +20,7 @@ object Pattern {
     override def toSlangString(): String = "_"
   }
 
-  case class Strict(inner: Pattern) extends Pattern {
+  case class Strict(inner: Pattern, full: Boolean) extends Pattern {
     override def toSlangString(): String = "{" + inner.toSlangString + "}"
   }
 
