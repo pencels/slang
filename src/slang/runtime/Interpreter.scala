@@ -4,7 +4,6 @@ import slang.lex.TokenType
 import slang.parse.{Expr, Pattern}
 
 import scala.annotation.tailrec
-import slang.lex.TokenType._
 
 object Interpreter {
   val TRUE_ATOM: Value = Atom("true")
@@ -105,18 +104,12 @@ class Interpreter {
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
     val op = expr.op
 
-    // TODO(chris): Write a compiler pass or parselet which transforms binary ';' exprs into Expr.Seq.
-    if (op.opType == TokenType.SEMI) {
-      strictEval(env, expr.left, full = true)
-      return eval(env, expr.right)
-    }
-
     val left = strictEval(env, expr.left, full = true)
     val right = strictEval(env, expr.right, full = true)
 
-    op.opType match {
-      case TokenType.AT => call(env, right, List(left))
-      case TokenType.PLUS =>
+    op.ty match {
+      case TokenType.At => call(env, right, List(left))
+      case TokenType.Plus =>
         (left, right) match {
           // We love overloaded operators
           case (SlangString(value), _) => SlangString(value + right.toSlangString)
@@ -136,40 +129,40 @@ class Interpreter {
           case _ =>
             Number(left.tryAsDouble(op) + right.tryAsDouble(op))
         }
-      case TokenType.MINUS =>
+      case TokenType.Minus =>
         Number(left.tryAsDouble(op) - right.tryAsDouble(op))
-      case TokenType.STAR =>
+      case TokenType.Star =>
         Number(left.tryAsDouble(op) * right.tryAsDouble(op))
-      case TokenType.SLASH =>
+      case TokenType.Slash =>
         Number(left.tryAsDouble(op) / right.tryAsDouble(op))
-      case TokenType.PERCENT => 
+      case TokenType.Percent => 
         Number(left.tryAsDouble(op) % right.tryAsDouble(op))
-      case TokenType.EQEQ =>
+      case TokenType.EqEq =>
         if (left == right) Interpreter.TRUE_ATOM
         else Interpreter.FALSE_ATOM
-      case TokenType.NE =>
+      case TokenType.Ne =>
         if (left == right) Interpreter.FALSE_ATOM
         else Interpreter.TRUE_ATOM
-      case TokenType.LT =>
+      case TokenType.Lt =>
         if (left.tryAsDouble(op) < right.tryAsDouble(op)) Interpreter.TRUE_ATOM
         else Interpreter.FALSE_ATOM
-      case TokenType.LE =>
+      case TokenType.Le =>
         if (left.tryAsDouble(op) <= right.tryAsDouble(op)) Interpreter.TRUE_ATOM
         else Interpreter.FALSE_ATOM
-      case TokenType.GT =>
+      case TokenType.Gt =>
         if (left.tryAsDouble(op) > right.tryAsDouble(op)) Interpreter.TRUE_ATOM
         else Interpreter.FALSE_ATOM
-      case TokenType.GE =>
+      case TokenType.Ge =>
         if (left.tryAsDouble(op) >= right.tryAsDouble(op)) Interpreter.TRUE_ATOM
         else Interpreter.FALSE_ATOM
-      case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.opType}")
+      case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
 
   def evalPostfixExpr(env: Environment, expr: Expr.Postfix): Value = {
     val value = eval(env, expr.expr)
-    expr.op.opType match {
-      case TokenType.BANG =>
+    expr.op.ty match {
+      case TokenType.Bang =>
         var i = value.tryAsDouble(expr.op).intValue
         var n = 1
 
@@ -178,24 +171,24 @@ class Interpreter {
           i -= 1
         }
         Number(n)
-      case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.opType}")
+      case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
 
   def evalPrefixOperator(env: Environment, expr: Expr.Prefix): Value = {
     val innerExpr = expr.expr
-    expr.op.opType match {
-      case MINUS => {
+    expr.op.ty match {
+      case TokenType.Minus => {
         val value = strictEval(env, innerExpr, full = true).tryAsDouble(expr.op)
         Number(-value)
       }
-      case PLUS => {
+      case TokenType.Plus => {
         val value = strictEval(env, innerExpr, full = true).tryAsDouble(expr.op)
         Number(value)
       }
-      case AMPERSAND => Lazy(env, innerExpr)
-      case STAR => strictEval(env, innerExpr)
-      case STAR_BANG => strictEval(env, innerExpr, full = true)
+      case TokenType.Ampersand => Lazy(env, innerExpr)
+      case TokenType.Star => strictEval(env, innerExpr)
+      case TokenType.StarBang => strictEval(env, innerExpr, full = true)
       case _ => ???
     }
   }

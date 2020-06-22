@@ -4,8 +4,8 @@ import slang.lex.Token
 
 class AmbiguousParseException(token: Token, exceptions: List[ParseException]) extends RuntimeException {
   override def getMessage: String = {
-    val line = token.line
-    val col = token.col
+    val line = token.loc.line
+    val col = token.loc.col
 
     s"""
        |[line $line, col $col] Ambiguous parse results:

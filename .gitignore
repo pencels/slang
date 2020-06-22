@@ -1,12 +1,14 @@
+# Ignore Intellij configuration and output directories
 /out/
 /.idea/
-
-# Ignore Gradle project-specific cache directory
-.gradle
-
-# Ignore Gradle build output directory
-build
 
 # Project-specific VSCode plugins
 .bloop
 .metals
+.vscode
+
+# Ignore SBT directories
+bin/
+project/
+target/
+build/

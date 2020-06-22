@@ -30,7 +30,7 @@ let eval_full = { !{ x } -> x }
 -- Could also be written like:
 -- let eval_full = { x -> *!x }
 
-let memoize = (
+let memoize = {
     let memo = :None
     {
         lazy -> {
@@ -44,7 +44,7 @@ let memoize = (
             }
         }
     }
-)
+}
 
 let ref = {
     val -> {
