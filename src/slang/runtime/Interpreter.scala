@@ -104,12 +104,6 @@ class Interpreter {
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
     val op = expr.op
 
-    // TODO(chris): Write a compiler pass or parselet which transforms binary ';' exprs into Expr.Seq.
-    if (op.ty == TokenType.Semicolon) {
-      strictEval(env, expr.left, full = true)
-      return eval(env, expr.right)
-    }
-
     val left = strictEval(env, expr.left, full = true)
     val right = strictEval(env, expr.right, full = true)
 

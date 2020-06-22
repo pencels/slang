@@ -27,14 +27,12 @@ class BlockParselet extends PrefixParselet {
     }
 
     private def parseBlock(parser: Parser): Expr = {
-        val exprs = parser.parseExprLines(TokenType.RCurly)
-        parser.expect(TokenType.RCurly, "Expect `}` at end of block.")
-        Expr.Block(Expr.Seq(exprs))
+        val exprs = parser.multilineSequenceExpr(TokenType.RCurly, "'}'")
+        Expr.Block(exprs)
     }
 
     private def parseMatchBlock(parser: Parser): Expr = {
         val matches = parseMatchRows(parser)
-        parser.expect(TokenType.RCurly, "Expect `}` at end of block.")
         Expr.Matchbox(matches);
     }
 
@@ -53,21 +51,11 @@ class BlockParselet extends PrefixParselet {
         val patterns = parseMatchParams(parser)
         parser.expect(TokenType.Arrow, "Expect -> after pattern.");
 
-        val expr = parser.expression()
-        Expr.MatchRow(patterns, expr);
+        val seq = parser.sequenceExpr
+        Expr.MatchRow(patterns, seq);
     }
 
     private def parseMatchRows(parser: Parser): List[Expr.MatchRow] = {
-        var matches: List[Expr.MatchRow] = Nil
-        while (!parser.check(TokenType.RCurly)) {
-            matches = parseMatchRow(parser) :: matches
-            if (!parser.check(TokenType.RCurly)) {
-                if (!parser.consume(TokenType.Newline, TokenType.Comma)) {
-                    throw new ParseException(parser.peek, "Expect newline or comma to separate matchbox clauses.");
-                }
-            }
-            parser.skipNewlines
-        }
-        matches.reverse
+        parser.parseDelimited(parseMatchRow, TokenType.Comma, TokenType.RCurly, "matchbox row", "comma", "}")
     }
 }

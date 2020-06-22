@@ -15,14 +15,14 @@ class AstPrinter {
     * @param expr The expression.
     * @return
     */
-  def print(indent: Int, expr: Expr): String = {
+  def print(indent: Int, expr: Expr, withSemi: Boolean = false): String = {
     expr match {
       case Assign(left, right) => print(left) + " = " + print(indent, right)
       case Binary(left, op, right) => print(left) + " " + op.lexeme + " " + print(right)
-      case Block(expr) => printMaybeIndented(indent, print(indent + 1, expr), "{", "}")
-      case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent + 1, _)), "{", "", "}")
+      case Block(expr) => printMaybeIndented(indent, print(indent + 1, expr), "{", "}", spaced = true)
+      case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent, _)), "{", "", "}", spaced = true)
       case Call(left, args) => (left :: args).map(print(indent, _)).mkString(" ")
-      case Grouping(inner) => "(" + print(inner) + ")"
+      case Grouping(inner) => printMaybeIndented(indent, print(indent + 1, inner), "(", ")", spaced = false)
       case Expr.Id(name) => name
       case Expr.Literal(value) => value.toString
       case Postfix(expr, op) => print(expr) + op.lexeme
@@ -30,8 +30,8 @@ class AstPrinter {
       case Prefix(op, expr) => op.lexeme + print(expr)
       case Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
       case Print(expr) => "print " + print(indent, expr)
-      case MatchRow(patterns, expr) => patterns.map(print).mkString(" ") + " -> " + print(indent, expr)
-      case Seq(exprs) => printSeq(indent, exprs.map(print(indent, _)))
+      case MatchRow(patterns, expr) => printRow(indent, patterns, expr)
+      case Seq(exprs) => printSeq(indent, exprs.map(print(indent, _)), withSemi)
     }
   }
 
@@ -51,49 +51,61 @@ class AstPrinter {
   def print(indent: Int, value: Value): String = {
     value match {
       case Lazy(environment, expr) => {
-        environment.shortString + " " + printMaybeIndented(indent, print(indent + 1, expr), "{", "}")
+        environment.shortString + " " + printMaybeIndented(indent, print(indent + 1, expr), "{", "}", spaced = true)
       }
       case slang.runtime.Matchbox(rows) => {
         val rowStrs = rows.map(print(indent + 1, _))
-        printMaybeIndented(indent, rowStrs, "{", "\n", "}")
+        printMaybeIndented(indent, rowStrs, "{", "", "}", spaced = true)
       }
       case Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) => {
-        val rowsStrs = rows.map(print(indent, _))
+        val rowsStrs = rows.map(print(indent + 1, _))
         val allRows = rowsStrs ++ extraRow.map(r => List(print(indent + 1, r))).getOrElse(List())
         val partialArgsStr = if (partialArguments.length == 0) "" else partialArguments.mkString("[", ", ", "]") + " @ "
-        partialArgsStr + innerEnvironment.shortString + " #" + printMaybeIndented(indent, allRows.toList, "{", "", "}")
+        partialArgsStr + innerEnvironment.shortString + " #" + printMaybeIndented(indent, allRows.toList, "{", "", "}", spaced = true)
       }
       case slang.runtime.SlangList(values) => values.map(print).mkString("[", ", ", "]")
       case _ => value.toString
     }
   }
 
+  def printRow(indent: Int, patterns: List[Pattern], expr: Expr): String = {
+    patterns.map(print).mkString(" ") + " -> " + printRowResult(indent + 1, expr)
+  }
+
   def print(indent: Int, row: (List[Value], Expr)): String = {
     val (params, expr) = row
-    params.map(print).mkString(" ") + " -> " + print(indent + 1, expr)
+    params.map(print).mkString(" ") + " -> " + printRowResult(indent + 1, expr)
   }
 
   def print(indent: Int, row: MatchboxRow): String = {
     val MatchboxRow(innerEnvironment, params, result) = row
-    innerEnvironment.shortString + " " + params.map(print).mkString(" ") + " -> " + print(indent, result)
+    innerEnvironment.shortString + " " + printRow(indent, params, result)
   }
 
   def print(indent: Int, row: HashboxRow): String = {
     val HashboxRow(params, result) = row
-    params.map(print).mkString(" ") + " -> " + print(indent, result)
+    printRow(indent, params, result)
   }
 
-  private def printMaybeIndented(indent: Int, innerStr: String, start: String, end: String): String = {
-    if (innerStr.contains('\n')) {
-      start + "\n" + INDENT_STR * (indent + 1) + innerStr + "\n" + INDENT_STR * indent + end
-    } else {
-      start + " " + innerStr + " " + end
+  def printRowResult(indent: Int, result: Expr): String = {
+    result match {
+      case Seq(exprs) => print(indent + 1, result, withSemi = true)
+      case _ => print(indent, result)
     }
   }
 
-  private def printMaybeIndented(indent: Int, innerStrs: List[String], start: String, delim: String, end: String): String = {
+  private def printMaybeIndented(indent: Int, innerStr: String, start: String, end: String, spaced: Boolean): String = {
+    val spacing = if (spaced) " " else ""
+    if (innerStr.contains('\n')) {
+      start + "\n" + INDENT_STR * (indent + 1) + innerStr + "\n" + INDENT_STR * indent + end
+    } else {
+      start + spacing + innerStr + spacing + end
+    }
+  }
+
+  private def printMaybeIndented(indent: Int, innerStrs: List[String], start: String, delim: String, end: String, spaced: Boolean): String = {
     if (innerStrs.length == 1) {
-      printMaybeIndented(indent, innerStrs.head, start, end)
+      printMaybeIndented(indent, innerStrs.head, start, end, spaced)
     } else {
       innerStrs
         .map(INDENT_STR * (indent + 1) + _)
@@ -101,14 +113,13 @@ class AstPrinter {
     }
   }
 
-  private def printSeq(indent: Int, innerStrs: List[String]): String = {
-    if (innerStrs.length == 1) {
-      innerStrs.head
-    } else {
-      innerStrs.head + "\n" + 
-      innerStrs.tail
-        .map(INDENT_STR * indent + _)
-        .mkString("", "\n", "")
+  private def printSeq(indent: Int, innerStrs: List[String], withSemi: Boolean = false): String = {
+    val delim = if (withSemi) ";\n" else "\n"
+    innerStrs match {
+      case Nil => ""
+      case List(head) => head
+      case head :: tail => 
+        head + delim + tail.map(INDENT_STR * indent + _).mkString("", delim, "")
     }
   }
 }
