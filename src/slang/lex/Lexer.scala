@@ -4,7 +4,8 @@ import slang.lex.TokenType
 import scala.collection._
 import scala.jdk.CollectionConverters._
 
-class Lexer(val source: java.lang.String) {
+class Lexer(val source: java.lang.String) extends Iterator[Token] {
+
     private val KEYWORDS: Map[String, TokenType] = Map[String, TokenType](
         "let" -> TokenType.Let,
         "print" -> TokenType.Print,
@@ -17,16 +18,29 @@ class Lexer(val source: java.lang.String) {
     private var line = 1
     private var col = 0
 
-    def lex: List[Token] = {
-        var tokens = new mutable.ListBuffer[Token]
+    private var consumed = false
 
-        while (!isAtEnd) {
-            tokens = tokens.addOne(nextToken)
+    override def clone(): Lexer = {
+        val lexer = new Lexer(source)
+        lexer.start = start
+        lexer.current = current
+        lexer.line = line
+        lexer.col = col
+        lexer.consumed = consumed
+        lexer
+    }
+
+    def lex: List[Token] = toList
+
+    override def hasNext: Boolean = !consumed
+
+    override def next(): Token = {
+        if (isAtEnd) {
+            consumed = true
+            Token(TokenType.Eof, "", Loc(line, col))
+        } else {
+            nextToken
         }
-
-        tokens.addOne(Token(TokenType.Eof, "", Loc(line, col)))
-
-        tokens.toList
     }
 
     private def isAtEnd: Boolean = current >= source.length

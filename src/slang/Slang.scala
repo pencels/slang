@@ -74,13 +74,11 @@ object Slang {
 
     def interpret(interpreter: Interpreter, rootEnv: Environment, text: String): Unit = {
         val lexer = new Lexer(text)
-        val tokens = lexer.lex
-        val parser = new Parser(tokens)
+        val parser = new Parser(lexer)
 
         try {
-            val exprs = parser.parse
             var value: Value = SlangNothing
-            for (expr <- exprs) {
+            for (expr <- parser) {
                 value = interpreter.strictEval(rootEnv, expr, true)
 
                 if (expr.isInstanceOf[Expr.Let]) {
@@ -107,19 +105,16 @@ object Slang {
 
     def printTokens(program: String) = {
         val lexer = new Lexer(program)
-        val tokens = lexer.lex
-
-        for (token <- tokens) {
+        for (token <- lexer) {
             pprint.pprintln(token)
         }
     }
 
     def printAst(program: String) = {
         val lexer = new Lexer(program)
-        val tokens = lexer.lex
-        val parser = new Parser(tokens)
+        val parser = new Parser(lexer)
 
-        for (expr <- parser.parse) {
+        for (expr <- parser) {
             pprint.pprintln(expr)
         }
     }

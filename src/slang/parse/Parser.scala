@@ -10,11 +10,13 @@ import slang.lex.TokenType
 import slang.parse._
 import slang.runtime.SlangNothing
 
-class Parser(val tokens: List[Token]) {
+class Parser(var lexer: Lexer) extends Iterator[Expr] {
+
     private val prefixParselets: mutable.HashMap[TokenType, PrefixParselet] = new mutable.HashMap[TokenType, PrefixParselet]
     private val infixParselets: mutable.HashMap[TokenType, InfixParselet] = new mutable.HashMap[TokenType, InfixParselet]
 
-    private var current = 0
+    private var previousOption: Option[Token] = None
+    private var currentOption: Option[Token] = None
 
     private def register(ty: TokenType, parselet: PrefixParselet) = {
         prefixParselets += (ty -> parselet)
@@ -41,27 +43,17 @@ class Parser(val tokens: List[Token]) {
         register(ty, new PostfixOpParselet)
     }
 
-    def parse: List[Expr] = {
-        var exprs: List[Expr] = Nil
-        while (!isAtEnd) {
-            skipNewlines // Consume any empty lines before trying to parse an expr.
-            if (!isAtEnd) {
-                exprs = sequenceExpr :: exprs
-            }
-            skipComments
-            peek.ty match {
-                case TokenType.Eof =>
-                case TokenType.Newline => advance
-                case _ => throw new ParseException(peek, "Expect newline after an expression.")
-            }
-        }
-        exprs.reverse
+    def parse: List[Expr] = toList
+
+    override def hasNext: Boolean = {
+        skipNewlines
+        !isAtEnd
     }
 
-    def skipComments: Unit = peek.ty match {
-        case TokenType.Comment(_) =>
-            advance
-        case _ =>
+    override def next(): Expr = {
+        val expr = sequenceExpr
+        skipNewlines
+        expr
     }
 
     @tailrec
@@ -72,14 +64,21 @@ class Parser(val tokens: List[Token]) {
         case _ =>
     }
 
-    def peek: Token = tokens(current)
-    def previous: Token = tokens(current - 1)
+    def peek: Token = currentOption getOrElse {
+        // Pump a token from the lexer if the lookahead isn't filled.
+        val token = lexer.next
+        currentOption = Some(token)
+        token
+    }
+
+    def previous: Token = previousOption.get
 
     def advance: Token = {
         if (!isAtEnd) {
-            current += 1
+            previousOption = currentOption
+            currentOption = lexer.nextOption
         }
-        previous
+        previousOption.get
     }
 
     def check(ty: TokenType with PlainToken): Boolean = {
@@ -97,12 +96,18 @@ class Parser(val tokens: List[Token]) {
     }
 
     def tryParse[T](action: Function[Parser, T]): Either[T, ParseException] = {
-        var cursor = current
+        val savedCurrent = currentOption
+        val savedPrevious = previousOption
+        val savedLexer = lexer.clone
+
         try {
-            Left(action.apply(this))
+            val result = action.apply(this)
+            Left(result)
         } catch {
-            case e: ParseException => 
-                current = cursor
+            case e: ParseException =>
+                currentOption = savedCurrent
+                previousOption = savedPrevious
+                lexer = savedLexer
                 Right(e)
         }
     }
@@ -120,8 +125,6 @@ class Parser(val tokens: List[Token]) {
 
         case TokenType.Bang => new PostfixOpParselet
 
-        case TokenType.Newline => new SkipParselet
-
         case TokenType.LParen |
              TokenType.LCurly |
              TokenType.LBracket |
@@ -137,7 +140,6 @@ class Parser(val tokens: List[Token]) {
     def getPrefixParselet(token: Token): PrefixParselet = token.ty match {
         case TokenType.Let => new LetParselet
         case TokenType.Print => new PrintParselet
-        case TokenType.Newline => new SkipParselet
 
         case TokenType.LParen => new GroupParselet
         case TokenType.LCurly => new BlockParselet
