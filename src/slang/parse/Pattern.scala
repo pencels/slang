@@ -38,6 +38,12 @@ object Pattern {
     override def asHashable: Value = slang.runtime.SlangList(patterns map { _.asHashable })
   }
 
+  case class Cons(head: Pattern, tail: Pattern) extends Pattern {
+    override def toSlangString: String = "(" + head.toSlangString + " . " + tail.toSlangString + ")"
+
+    override def isHashable: Boolean = false // TODO(chris): could probably inspect the tail for hashable patterns
+  }
+
   case class Spread(name: Token) extends Pattern {
     override def toSlangString: String = name.lexeme
   }

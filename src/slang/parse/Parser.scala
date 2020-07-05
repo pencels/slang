@@ -9,39 +9,36 @@ import slang.lex._
 import slang.lex.TokenType
 import slang.parse._
 import slang.runtime.SlangNothing
+import slang.lex.TokenType.Operator
+import slang.parse.Associativity
+
+object Parser {
+    private val namedPrefixParselets = new mutable.HashMap[String, PrefixParselet]
+    private val namedInfixParselets = new mutable.HashMap[String, InfixParselet]
+
+    prefix("&") // Add & in core language as a prefix parselet.
+    infix(".", Associativity.Right, 450)
+
+    def prefix(name: String) = {
+        Parser.namedPrefixParselets += (name -> new PrefixOpParselet)
+        Parser.namedInfixParselets.getOrElseUpdate(name, new CallParselet)
+        Lexer.operatorTrie.add(name)
+    }
+
+    def postfix(name: String) = {
+        Parser.namedInfixParselets += (name -> new PostfixOpParselet)
+        Lexer.operatorTrie.add(name)
+    }
+
+    def infix(name: String, assoc: Associativity, prec: Int) = {
+        Parser.namedInfixParselets += (name -> new BinaryOpParselet(prec, assoc == Associativity.Right))
+        Lexer.operatorTrie.add(name)
+    }
+}
 
 class Parser(var lexer: Lexer) extends Iterator[Expr] {
-
-    private val prefixParselets: mutable.HashMap[TokenType, PrefixParselet] = new mutable.HashMap[TokenType, PrefixParselet]
-    private val infixParselets: mutable.HashMap[TokenType, InfixParselet] = new mutable.HashMap[TokenType, InfixParselet]
-
     private var previousOption: Option[Token] = None
     private var currentOption: Option[Token] = None
-
-    private def register(ty: TokenType, parselet: PrefixParselet) = {
-        prefixParselets += (ty -> parselet)
-    }
-
-    private def register(ty: TokenType, parselet: InfixParselet) = {
-        infixParselets += (ty -> parselet)
-    }
-
-    private def registerAtom(ty: TokenType, parselet: PrefixParselet) = {
-        register(ty, parselet)
-        register(ty, new CallParselet)
-    }
-
-    private def prefix(ty: TokenType) = {
-        registerAtom(ty, new PrefixOpParselet)
-    }
-
-    private def binary(ty: TokenType, precedence: Int, isRight: Boolean) = {
-        register(ty, new BinaryOpParselet(precedence, isRight))
-    }
-
-    private def postfix(ty: TokenType) = {
-        register(ty, new PostfixOpParselet)
-    }
 
     def parse: List[Expr] = toList
 
@@ -51,9 +48,99 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
     }
 
     override def next(): Expr = {
+        peek.ty match {
+            case TokenType.KwOperator =>
+                operatorDecl
+                skipNewlines
+                return Expr.Literal(SlangNothing)
+            case _ =>
+        }
+
         val expr = sequenceExpr
         skipNewlines
         expr
+    }
+
+    def operatorDecl() = {
+        val token = advance // Eat 'operator'
+        peek.ty match {
+            case TokenType.Id("prefix") =>
+                advance
+                val ops = operators
+                for (op <- ops) {
+                    if (Parser.namedPrefixParselets contains op) {
+                        throw new ParseException(previous, s"Prefix operator `$op` is already defined.")
+                    }
+                    Parser.prefix(op)
+                }
+            case TokenType.Id("postfix") =>
+                advance
+                val ops = operators
+                for (op <- ops) {
+                    if (Parser.namedInfixParselets get op exists { !_.isInstanceOf[CallParselet] }) {
+                        throw new ParseException(previous, s"Operator `$op` is already defined as postfix or infix.")
+                    }
+                    Parser.postfix(op)
+                }
+            case TokenType.Id("infix") =>
+                val (ops, assoc, prec) = infixDecl
+                for (op <- ops) {
+                    if (Parser.namedInfixParselets get op exists { !_.isInstanceOf[CallParselet] }) {
+                        throw new ParseException(previous, s"Operator `$op` is already defined as postfix or infix.")
+                    }
+                    Parser.infix(op, assoc, prec)
+                }
+            case _ => throw new ParseException(token, "Expected 'prefix', 'postfix', or 'infix' operator type.")
+        }
+    }
+
+    def operator() = {
+        peek.ty match {
+            case TokenType.UnknownOperator(op) =>
+                advance // Eat operator
+                op
+            case TokenType.Operator(op) =>
+                advance // Eat operator
+                op
+            case _ => throw new ParseException(peek, "Expected operator literal.")
+        }
+    }
+
+    def operators() = {
+        var continue = true
+        val ops = new mutable.ListBuffer[String]
+        while (continue) {
+            peek.ty match {
+                case TokenType.UnknownOperator(_) => ops.addOne(operator)
+                case TokenType.Operator(_) => ops.addOne(operator)
+                case _ => continue = false
+            }
+        }
+        ops.toList
+    }
+
+    def infixDecl() = {
+        advance // Eat 'infix' token
+
+        peek.ty match {
+            case TokenType.Id(assocStr @ ("left" | "right")) =>
+                advance // Eat associativity
+                val assoc = assocStr match {
+                    case "left" => Associativity.Left
+                    case "right" => Associativity.Right
+                }
+                peek.ty match {
+                    case TokenType.Number(prec) if prec.isWhole =>
+                        if (prec >= Precedence.CALL) {
+                            throw new ParseException(peek, s"Precedence of $prec too high.")
+                        }
+                        advance
+                        val ops = operators
+                        (ops, assoc, prec.toInt)
+                    case _ => throw new ParseException(peek, "Expected integer precedence value.")
+                }
+            case _ => throw new ParseException(peek, "Expected 'left' or 'right' associativity declaration.")
+        }
     }
 
     @tailrec
@@ -113,18 +200,6 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
     }
 
     def getInfixParselet(token: Token): InfixParselet = token.ty match {
-        case TokenType.Star | TokenType.Slash | TokenType.Percent => new BinaryOpParselet(Precedence.PRODUCT, false)
-        case TokenType.Plus | TokenType.Minus => new BinaryOpParselet(Precedence.SUM, false)
-        case TokenType.EqEq |
-             TokenType.Ne |
-             TokenType.Lt |
-             TokenType.Le |
-             TokenType.Gt |
-             TokenType.Ge => new BinaryOpParselet(Precedence.CONDITIONAL, false)
-        case TokenType.At => new BinaryOpParselet(Precedence.APPLY, false)
-
-        case TokenType.Bang => new PostfixOpParselet
-
         case TokenType.LParen |
              TokenType.LCurly |
              TokenType.LBracket |
@@ -133,6 +208,13 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
              _: TokenType.Atom |
              _: TokenType.Number |
              _: TokenType.String => new CallParselet
+
+        case TokenType.Operator(op) =>
+            Parser.namedInfixParselets.get(op).getOrElse {
+                throw new ParseException(token, s"Operator `$op` is not infix")
+            }
+        case TokenType.UnknownOperator(op) =>
+            throw new ParseException(token, s"Unknown infix operator `$op`")
 
         case _ => null
     }
@@ -150,14 +232,13 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
              _: TokenType.Number |
              _: TokenType.String => new LiteralParselet
 
-        case TokenType.Minus |
-             TokenType.Plus |
-             TokenType.Bang |
-             TokenType.Ampersand |
-             TokenType.Star |
-             TokenType.StarBang => new PrefixOpParselet
+        case TokenType.Operator(op) =>
+            Parser.namedPrefixParselets.get(op).getOrElse {
+                throw new ParseException(token, s"Operator `$op` is not prefix")
+            }
+        case TokenType.UnknownOperator(op) => throw new ParseException(token, s"Unknown prefix operator `$op`")
 
-        case _ => null
+        case _ => throw new ParseException(token, s"Could not parse token $token as prefix.")
     }
 
     def expression(precedence: Int = 0): Expr = {
@@ -179,6 +260,11 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
         }
 
         var left = prefix.parse(this, token)
+
+        // If there is a non-infix operator token, skip infix operator parsing.
+        if (getInfixParselet(peek) == null) {
+            return left
+        }
 
         while (precedence < currentPrecedence) {
             val nextToken = peek
@@ -283,19 +369,38 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
     }
 
     def pattern(): Pattern = {
+        var pat = simplePattern()
+        var continue = true
+        while (continue) {
+            peek.ty match {
+                case TokenType.Operator(".") => 
+                    advance // Eat '.'
+                    pat = Pattern.Cons(pat, pattern())
+                case _ => continue = false
+            }
+        }
+        pat
+    }
+
+    def simplePattern() = {
         peek.ty match {
             case TokenType.Nothing |
                  _: TokenType.Number |
                  _: TokenType.Atom |
                  _: TokenType.String =>
                  Pattern.Literal(valueFromTokenType(advance.ty))
-            case TokenType.Ampersand =>
+            case TokenType.LParen =>
+                advance // Eat '('
+                val pat = pattern
+                expect(TokenType.RParen, "Expected ')' to close pattern.")
+                pat
+            case TokenType.Operator("&") =>
                 advance
                 strictPattern(false)
-            case TokenType.AmpersandBang =>
+            case TokenType.Operator("&!") =>
                 advance
                 strictPattern(true)
-            case TokenType.Bang =>
+            case TokenType.Operator("!") =>
                 advance
                 peek.ty match {
                     case TokenType.LCurly =>
@@ -315,7 +420,7 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
                     Pattern.Ignore(id)
                 } else {
                     peek.ty match {
-                        case TokenType.DotDot =>
+                        case TokenType.Operator("..") =>
                             advance
                             Pattern.Spread(id)
                         case _ => Pattern.Id(id)
