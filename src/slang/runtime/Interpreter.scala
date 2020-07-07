@@ -5,12 +5,10 @@ import slang.parse.{Expr, Pattern}
 
 import scala.annotation.tailrec
 
-object Interpreter {
+case object Interpreter {
   val TRUE_ATOM: Value = Atom("true")
   val FALSE_ATOM: Value = Atom("false")
-}
 
-class Interpreter {
   def interpret(env: Environment, exprs: List[Expr]): Value = {
     var ret: Value = SlangNothing
 
@@ -104,16 +102,13 @@ class Interpreter {
   def evalBinExpr(env: Environment, expr: Expr.Binary): Value = {
     val op = expr.op
 
-    val left = strictEval(env, expr.left, full = true)
-    val right = strictEval(env, expr.right, full = true)
+    val left = eval(env, expr.left)
+    val right = eval(env, expr.right)
 
     op.ty match {
-      case TokenType.At => call(env, right, List(left))
-      case TokenType.Plus =>
+      case TokenType.Operator("+") =>
         (left, right) match {
           // We love overloaded operators
-          case (SlangString(value), _) => SlangString(value + right.toSlangString)
-          case (SlangList(leftValues), SlangList(rightValues)) => SlangList(leftValues ++ rightValues)
           case (Matchbox(left), Matchbox(right)) =>
             Matchbox(left ++ right)
           case (Matchbox(left), r: Hashbox) =>
@@ -127,34 +122,24 @@ class Interpreter {
             val Matchbox(left) = transmuteHashbox(l)
             Matchbox(left ++ right)
           case _ =>
-            Number(left.tryAsDouble(op) + right.tryAsDouble(op))
+            // Use __primitives__ to handle operator calls
+            val typeAtom = Atom(left.getType)
+            val primitives = env.get("__primitives__");
+            val args = List(typeAtom, Atom("get"), left, Atom("+"), right)
+            call(env, primitives, args)
         }
-      case TokenType.Minus =>
-        Number(left.tryAsDouble(op) - right.tryAsDouble(op))
-      case TokenType.Star =>
-        Number(left.tryAsDouble(op) * right.tryAsDouble(op))
-      case TokenType.Slash =>
-        Number(left.tryAsDouble(op) / right.tryAsDouble(op))
-      case TokenType.Percent => 
-        Number(left.tryAsDouble(op) % right.tryAsDouble(op))
-      case TokenType.EqEq =>
-        if (left == right) Interpreter.TRUE_ATOM
-        else Interpreter.FALSE_ATOM
-      case TokenType.Ne =>
-        if (left == right) Interpreter.FALSE_ATOM
-        else Interpreter.TRUE_ATOM
-      case TokenType.Lt =>
-        if (left.tryAsDouble(op) < right.tryAsDouble(op)) Interpreter.TRUE_ATOM
-        else Interpreter.FALSE_ATOM
-      case TokenType.Le =>
-        if (left.tryAsDouble(op) <= right.tryAsDouble(op)) Interpreter.TRUE_ATOM
-        else Interpreter.FALSE_ATOM
-      case TokenType.Gt =>
-        if (left.tryAsDouble(op) > right.tryAsDouble(op)) Interpreter.TRUE_ATOM
-        else Interpreter.FALSE_ATOM
-      case TokenType.Ge =>
-        if (left.tryAsDouble(op) >= right.tryAsDouble(op)) Interpreter.TRUE_ATOM
-        else Interpreter.FALSE_ATOM
+      case TokenType.Operator(".") =>
+        right match {
+          case SlangList(values) => SlangList(left :: values)
+          case _ =>
+            throw new RuntimeError(expr.op, s"Operator `.` expects a List for its right operand")
+        }
+      case TokenType.Operator(op) =>
+        // Use __primitives__ to handle operator calls
+        val typeAtom = Atom(left.getType)
+        val primitives = env.get("__primitives__");
+        val args = List(typeAtom, Atom("get"), left, Atom(op), right)
+        call(env, primitives, args)
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
@@ -162,15 +147,13 @@ class Interpreter {
   def evalPostfixExpr(env: Environment, expr: Expr.Postfix): Value = {
     val value = eval(env, expr.expr)
     expr.op.ty match {
-      case TokenType.Bang =>
-        var i = value.tryAsDouble(expr.op).intValue
-        var n = 1
-
-        while (i > 0) {
-          n *= i
-          i -= 1
-        }
-        Number(n)
+      case TokenType.Operator(op) =>
+        val value = eval(env, expr.expr)
+        // Use __primitives__ to handle operator calls
+        val typeAtom = Atom(value.getType)
+        val primitives = env.get("__primitives__");
+        val args = List(typeAtom, Atom("get"), value, Atom(op))
+        call(env, primitives, args)
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
@@ -178,17 +161,14 @@ class Interpreter {
   def evalPrefixOperator(env: Environment, expr: Expr.Prefix): Value = {
     val innerExpr = expr.expr
     expr.op.ty match {
-      case TokenType.Minus => {
-        val value = strictEval(env, innerExpr, full = true).tryAsDouble(expr.op)
-        Number(-value)
-      }
-      case TokenType.Plus => {
-        val value = strictEval(env, innerExpr, full = true).tryAsDouble(expr.op)
-        Number(value)
-      }
-      case TokenType.Ampersand => Lazy(env, innerExpr)
-      case TokenType.Star => strictEval(env, innerExpr)
-      case TokenType.StarBang => strictEval(env, innerExpr, full = true)
+      case TokenType.Operator("&") => Lazy(env, innerExpr)
+      case TokenType.Operator(op) =>
+        val value = eval(env, expr.expr)
+        // Use __primitives__ to handle operator calls
+        val typeAtom = Atom(value.getType)
+        val primitives = env.get("__primitives__");
+        val args = List(typeAtom, Atom("get"), Atom(op), value)
+        call(env, primitives, args)
       case _ => ???
     }
   }
@@ -208,6 +188,11 @@ class Interpreter {
           case (value, rest) => call(env, value, rest)
         }
       }
+      case NativeFunction(func) =>
+        func(args) match {
+          case (value, Nil) => value
+          case (value, rest) => call(env, value, rest)
+        }
       case callee => 
         // Use __primitives__ to handle method calls on primitives.
         val typeAtom = Atom(callee.getType)
@@ -228,6 +213,13 @@ class Interpreter {
       case _: Pattern.Ignore => true
       case Pattern.Strict(inner, full) => assign(env, inner, Thunk.from(strictCoerceThunk(arg, full)), define)
       case Pattern.Literal(value) => value == strictCoerceThunk(arg, full = true)
+      case Pattern.Cons(head, tail) =>
+        strictCoerceThunk(arg, full = true) match {
+          case SlangList(valHead :: valTail) =>
+            assign(env, head, Thunk.from(valHead)) &&
+              assign(env, tail, Thunk.from(SlangList(valTail)))
+          case _ => false
+        }
       case Pattern.SlangList(patterns) =>
         strictCoerceThunk(arg, full = true) match {
           case SlangList(values) => assignList(env, patterns, values, define)
@@ -300,7 +292,7 @@ class Interpreter {
       }
 
       if (newRows.isEmpty) {
-        throw new RuntimeError(null, "Matchbox is exhausted with no match")
+        throw new NoMatchException
       }
 
       // This is an artifact of having to build up a new list...
@@ -335,7 +327,7 @@ class Interpreter {
             val allValues = strictValues ++ remainder
             applyFinalHashboxRow(new Environment(innerEnvironment), parameters, result, allValues)
           case None =>
-            throw new RuntimeError(null, "Matchbox is exhausted with no match")
+            throw new NoMatchException
         }
       }
       case (partialArguments, Nil) if args.length < hashbox.arity => {
@@ -369,7 +361,7 @@ class Interpreter {
 
         // Otherwise, just continue...
       } else {
-        throw new RuntimeError(null, "Matchbox is exhausted with no match")
+        throw new NoMatchException
       }
     }
 

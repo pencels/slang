@@ -65,7 +65,11 @@ case class Atom(name: String) extends Value {
 
   override def toSlangString: String = name
 
-  override def toString: String = ":" + name
+  override def toString: String = if (name contains ' ') {
+    ":`" + name + "`"
+  } else {
+    ":" + name
+  }
 }
 
 case class SlangList(values: List[Value]) extends Value {
@@ -204,4 +208,10 @@ case class HashboxRow(parameters: List[Pattern], result: Expr) {
   def toSlangString: String = parameters.map({
     _.toSlangString
   }).mkString(" ") + " -> ..."
+}
+
+case class NativeFunction(func: Function[List[Value], (Value, List[Value])]) extends Value {
+  override def getType: String = "Native"
+  override def toSlangString: String = "<Native>"
+  override def toString: String = "<Native>"
 }

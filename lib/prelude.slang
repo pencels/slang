@@ -1,3 +1,10 @@
+operator prefix + - ! * *!
+operator infix left 300 @
+operator infix left 400 < <= > >= == !=
+operator infix left 500 + -
+operator infix left 600 * / %
+operator postfix !
+
 let if = {
     :true then _  -> then
     :false _ else -> else
@@ -34,14 +41,14 @@ let memoize = {
     let memo = :None
     {
         lazy -> {
-            if_unwrap (memo == :None) {
-                let v = *lazy
-                memo = [:Some, v]
-                v
-            } {
-                let [_, v] = memo
-                v
-            }
+            {
+                :None -> (
+                    let v = __strict__ lazy
+                    memo = [:Some, v]
+                    v
+                )
+                [:Some, v] -> v
+            } memo
         }
     }
 }
@@ -60,6 +67,11 @@ let map = {
 
 let __primitives__ = memoize {
     let atom_bindings = ref {
+        :! :true -> :false
+        :! :false -> :true
+        :* x -> x
+        :*! x -> x
+        a :@ m -> m a
         _ :type -> "Atom"
     }
 
@@ -90,24 +102,71 @@ let __primitives__ = memoize {
 
         list :at n -> list :try_at n :get_or "index out of bounds exception"
 
+        :* x -> x
+        :*! x -> x
+
+        l :+ r -> __concat_list__ l r
+        l :@ m -> m l
         _ :type -> "List"
     }
 
     let nothing_bindings = ref {
+        :* x -> x
+        :*! x -> x
+        n :@ m -> m n
         _ :type -> "Nothing"
     }
 
     let number_bindings = ref {
-        start :to end -> if (start > end) [] { [start] + (start + 1) :to end }
+        start :to end -> if (start > end) [] { [start] + *((start + 1) :to end) }
+
+        :+ n -> __to_num__ n
+        :- n -> __neg__ n
+
+        a :+ b -> __add__ a *!b
+        a :- b -> __sub__ a *!b
+
+        a :* b -> __mul__ a *!b
+        a :/ b -> __div__ a *!b
+        a :% b -> __mod__ a *!b
+
+        a :< b -> __lt__ a *!b
+        a :<= b -> __le__ a *!b
+        a :> b -> __gt__ a *!b
+        a :>= b -> __ge__ a *!b
+        a :== b -> __eq__ a *!b
+        a :!= b -> __ne__ a *!b
+
+        :* x -> x
+        :*! x -> x
+
+        0 :! -> 1
+        n :! -> n * (n - 1)!
 
         0 :times _ -> nothing
         n :times body -> body; (n - 1) :times body
 
+        n :@ m -> m n
         _ :type -> "Number"
     }
 
     let string_bindings = ref {
+        :* x -> x
+        :*! x -> x
+
+        s :+ other -> __concat_str__ s *!other
+
+        a :== b -> __eq__ a *!b
+        a :!= b -> __ne__ a *!b
+
+        s :@ m -> m s
         _ :type -> "String"
+    }
+    
+    let lazy_bindings = ref {
+        :* l -> __strict__ l
+        :*! l -> __full_strict__ l
+        l :@ m -> m l
     }
 
     {
@@ -116,6 +175,7 @@ let __primitives__ = memoize {
         :Nothing -> nothing_bindings
         :Number -> number_bindings
         :String -> string_bindings
+        :Lazy -> lazy_bindings
     }
 }
 
