@@ -1,17 +1,16 @@
 package slang.runtime
 
-import slang.lex.Token
-import slang.parse.Pattern.Literal
-import slang.parse.{Expr, Pattern}
-import slang.parse.AstPrinter
-import slang.parse.Expr.MatchRow
+import java.lang.{String => JString}
+
+import slang.lex._
+import slang.parse._
 
 sealed trait Value {
-  def getType: String
+  def getType: JString
 
   /** toSlangString returns the string representation of a value.
    * (c.f. toString will return the <i>debug</i> representation of a value). */
-  def toSlangString: String
+  def toSlangString: JString
 
   /* Type coersion functions */
 
@@ -24,194 +23,196 @@ sealed trait Value {
   def isHashable = true
 }
 
-case object SlangNothing extends Value {
-  def getInstance: SlangNothing.type = this
+object Value {
+  case object Nothing extends Value {
+    def getInstance: Value.Nothing.type = this
 
-  override def getType: String = "Nothing"
+    override def getType: JString = "Nothing"
 
-  override def toSlangString: String = toString()
+    override def toSlangString: JString = toString()
 
-  override def toString: String = "nothing"
-}
-
-case class Number(value: Double) extends Value {
-  override def getType: String = "Number"
-
-  override def toSlangString: String = toString()
-
-  override def asDouble: Double = value
-
-  override def tryAsDouble(where: Token): Double = value
-
-  override def toString: String = {
-    var text = String.valueOf(value)
-    if (text endsWith ".0") {
-      text = text.substring(0, text.length() - 2)
-    }
-    text
-  }
-}
-
-case class SlangString(value: String) extends Value {
-  override def getType: String = "String"
-
-  override def toSlangString: String = value
-
-  override def toString: String = "\"" + value + "\""
-}
-
-case class Atom(name: String) extends Value {
-  override def getType: String = "Atom"
-
-  override def toSlangString: String = name
-
-  override def toString: String = if (name contains ' ') {
-    ":`" + name + "`"
-  } else {
-    ":" + name
-  }
-}
-
-case class SlangList(values: List[Value]) extends Value {
-  override def getType: String = "List"
-
-  override def toSlangString: String = toString()
-
-  override def toString: String = values.map(_.toString).mkString("[", ", ", "]")
-}
-
-case class Lazy(environment: Environment, expr: Expr) extends Value {
-  override def toString: String = {
-    var repr = environment.collapsedString
-    repr += " { ... }"
-    repr
+    override def toString: JString = "nothing"
   }
 
-  override def getType: String = "Lazy"
+  case class Number(value: Double) extends Value {
+    override def getType: JString = "Number"
 
-  override def toSlangString: String = toString()
+    override def toSlangString: JString = toString()
 
-  override def isHashable: Boolean = false
-}
+    override def asDouble: Double = value
 
-case class Matchbox(rows: List[MatchboxRow]) extends Value {
-  override def getType: String = "Matchbox"
+    override def tryAsDouble(where: Token): Double = value
 
-  override def toString: String = {
-    // TODO(michael): Chris pls help make this pretty.
-    rows.map({
-      _.toSlangString
-    }).mkString("{ ", ", ", " }")
-  }
-
-  override def toSlangString: String = toString()
-
-  override def isHashable: Boolean = false
-}
-
-object Matchbox {
-  def from(env: Environment, ast: List[MatchRow]): Matchbox =
-    Matchbox(ast map { m => MatchboxRow(env, m.patterns, m.expr) })
-
-  def toMatchboxOrHashbox(env: Environment, ast: List[MatchRow]): Value = ast.reverse match {
-    case literalPatterns if isHashboxable(literalPatterns, None) =>
-      // NOTE: `literalPatterns` not reversed here, so our final hashmap has first pattern precedence.
-      Hashbox.from(env, literalPatterns, None)
-    case extraPattern :: literalPatterns if isHashboxable(literalPatterns, Some(extraPattern)) =>
-      Hashbox.from(env, literalPatterns, Some(extraPattern))
-    case _ => Matchbox.from(env, ast)
-  }
-
-  /** Whether this set of literal patterns are matchbox-able, that is:
-   *  1. If there's at least one hashable pattern,
-   *  2. All of the hashable patterns are the same arity, and
-   *  3. The additional non-hashable pattern (if exists) is the same arity.
-   */
-  def isHashboxable(literalPatterns: List[MatchRow], extraPattern: Option[MatchRow]): Boolean =
-    literalPatterns.nonEmpty && literalPatterns.forall(_.isHashable) && sameArity(literalPatterns map {
-      _.patterns
-    }) && extraPattern.forall(_.patterns.length == literalPatterns.head.patterns.length)
-
-  // TODO: Helper fn, this doesn't need to be here...
-  def sameArity[T](patterns: List[List[T]]): Boolean = patterns match {
-    case Nil => true
-    case first :: rest =>
-      var arity = first.length
-      rest forall {
-        _.length == arity
+    override def toString = {
+      var text = JString.valueOf(value)
+      if (text endsWith ".0") {
+        text = text.substring(0, text.length() - 2)
       }
-  }
-}
-
-case class MatchboxRow(innerEnvironment: Environment, parameters: List[Pattern], result: Expr) {
-  def toSlangString: String = {
-    innerEnvironment.shortString + " " + (parameters.map({
-      _.toSlangString
-    }).mkString(" ")) + " -> ..."
-  }
-
-  def withNewEnvironment: MatchboxRow = {
-    // TODO(michael): It's probably better to treat Environment objects as... immutable.
-    MatchboxRow(new Environment(innerEnvironment), parameters, result)
-  }
-}
-
-case class Hashbox(partialArguments: List[Value],
-                   innerEnvironment: Environment,
-                   arity: Int,
-                   rows: Map[List[Value], Expr],
-                   extraRow: Option[HashboxRow]) extends Value {
-
-  override def getType: String = "Hashbox"
-
-  override def toString: String = {
-    var rowStrings: List[String] = rows.map({
-      case (k, _) => k.map(_.toSlangString).mkString(" ") + " -> ..."
-    }).toList
-
-    // Concatenate the extra row...
-    extraRow match {
-      case Some(row) =>
-        // TODO(michael): Is there... a better append?
-        rowStrings ++= List(row.toSlangString)
-      case None =>
-    }
-
-    // TODO(michael): Chris pls help make this pretty.
-    val box = rowStrings.mkString("{(hashed) ", ", ", " }")
-
-    partialArguments match {
-      case Nil => box
-      case _ => partialArguments.mkString("(", ", ", ") @ ") + box
+      text
     }
   }
 
-  override def toSlangString: String = toString()
+  case class String(value: JString) extends Value {
+    override def getType = "String"
 
-  override def isHashable: Boolean = false
-}
+    override def toSlangString = value
 
-object Hashbox {
-  def from(env: Environment, literalPatterns: List[MatchRow], extraRow: Option[MatchRow]): Value = {
-    val arity = literalPatterns.head.patterns.length
-    var hashRows: Map[List[Value], Expr] = Map.empty
+    override def toString = "\"" + value + "\""
+  }
 
-    for (MatchRow(patterns, expr) <- literalPatterns) {
-      hashRows += (patterns.map(_.asHashable) -> expr)
+  case class Atom(name: JString) extends Value {
+    override def getType = "Atom"
+
+    override def toSlangString = name
+
+    override def toString = if (name contains ' ') {
+      ":`" + name + "`"
+    } else {
+      ":" + name
+    }
+  }
+
+  case class List(values: scala.List[Value]) extends Value {
+    override def getType: JString = "List"
+
+    override def toSlangString: JString = toString()
+
+    override def toString: JString = values.map(_.toString).mkString("[", ", ", "]")
+  }
+
+  case class Lazy(environment: Environment, expr: Expr) extends Value {
+    override def toString: JString = {
+      var repr = environment.collapsedString
+      repr += " { ... }"
+      repr
     }
 
-    Hashbox(Nil, new Environment(env), arity, hashRows, extraRow map { m => HashboxRow(m.patterns, m.expr) })
+    override def getType: JString = "Lazy"
+
+    override def toSlangString: JString = toString()
+
+    override def isHashable: Boolean = false
   }
-}
 
-case class HashboxRow(parameters: List[Pattern], result: Expr) {
-  def toSlangString: String = parameters.map({
-    _.toSlangString
-  }).mkString(" ") + " -> ..."
-}
+  case class Matchbox(rows: scala.List[Matchbox.Row]) extends Value {
+    override def getType: JString = "Matchbox"
 
-case class NativeFunction(func: Function[List[Value], (Value, List[Value])]) extends Value {
-  override def getType: String = "Native"
-  override def toSlangString: String = "<Native>"
-  override def toString: String = "<Native>"
+    override def toString: JString = {
+      // TODO(michael): Chris pls help make this pretty.
+      rows.map({
+        _.toSlangString
+      }).mkString("{ ", ", ", " }")
+    }
+
+    override def toSlangString: JString = toString()
+
+    override def isHashable: Boolean = false
+  }
+
+  object Matchbox {
+    case class Row(innerEnvironment: Environment, parameters: scala.List[Pattern], result: Expr) {
+      def toSlangString: JString = {
+        innerEnvironment.shortString + " " + (parameters.map({
+          _.toSlangString
+        }).mkString(" ")) + " -> ..."
+      }
+
+      def withNewEnvironment: Row = {
+        // TODO(michael): It's probably better to treat Environment objects as... immutable.
+        Value.Matchbox.Row(new Environment(innerEnvironment), parameters, result)
+      }
+    }
+
+    def from(env: Environment, ast: scala.List[Expr.MatchRow]): Matchbox =
+      Matchbox(ast map { m => Row(env, m.patterns, m.expr) })
+
+    def toMatchboxOrHashbox(env: Environment, ast: scala.List[Expr.MatchRow]): Value = ast.reverse match {
+      case literalPatterns if isHashboxable(literalPatterns, None) =>
+        // NOTE: `literalPatterns` not reversed here, so our final hashmap has first pattern precedence.
+        Value.Hashbox.from(env, literalPatterns, None)
+      case extraPattern :: literalPatterns if isHashboxable(literalPatterns, Some(extraPattern)) =>
+        Value.Hashbox.from(env, literalPatterns, Some(extraPattern))
+      case _ => Matchbox.from(env, ast)
+    }
+
+    /** Whether this set of literal patterns are matchbox-able, that is:
+     *  1. If there's at least one hashable pattern,
+     *  2. All of the hashable patterns are the same arity, and
+     *  3. The additional non-hashable pattern (if exists) is the same arity.
+     */
+    def isHashboxable(literalPatterns: scala.List[Expr.MatchRow], extraPattern: Option[Expr.MatchRow]): Boolean =
+      literalPatterns.nonEmpty && literalPatterns.forall(_.isHashable) && sameArity(literalPatterns map {
+        _.patterns
+      }) && extraPattern.forall(_.patterns.length == literalPatterns.head.patterns.length)
+
+    // TODO: Helper fn, this doesn't need to be here...
+    def sameArity[T](patterns: scala.List[scala.List[T]]): Boolean = patterns match {
+      case Nil => true
+      case first :: rest =>
+        var arity = first.length
+        rest forall {
+          _.length == arity
+        }
+    }
+  }
+
+  case class Hashbox(partialArguments: scala.List[Value],
+                    innerEnvironment: Environment,
+                    arity: Int,
+                    rows: Map[scala.List[Value], Expr],
+                    extraRow: Option[Hashbox.Row]) extends Value {
+
+    override def getType: JString = "Hashbox"
+
+    override def toString: JString = {
+      var rowStrings: scala.List[JString] = rows.map({
+        case (k, _) => k.map(_.toSlangString).mkString(" ") + " -> ..."
+      }).toList
+
+      // Concatenate the extra row...
+      extraRow match {
+        case Some(row) =>
+          // TODO(michael): Is there... a better append?
+          rowStrings ++= scala.List(row.toSlangString)
+        case None =>
+      }
+
+      // TODO(michael): Chris pls help make this pretty.
+      val box = rowStrings.mkString("{(hashed) ", ", ", " }")
+
+      partialArguments match {
+        case Nil => box
+        case _ => partialArguments.mkString("(", ", ", ") @ ") + box
+      }
+    }
+
+    override def toSlangString: JString = toString()
+
+    override def isHashable: Boolean = false
+  }
+
+  object Hashbox {
+    case class Row(parameters: scala.List[Pattern], result: Expr) {
+      def toSlangString: JString = parameters.map({
+        _.toSlangString
+      }).mkString(" ") + " -> ..."
+    }
+
+    def from(env: Environment, literalPatterns: scala.List[Expr.MatchRow], extraRow: Option[Expr.MatchRow]): Value = {
+      val arity = literalPatterns.head.patterns.length
+      var hashRows: Map[scala.List[Value], Expr] = Map.empty
+
+      for (Expr.MatchRow(patterns, expr) <- literalPatterns) {
+        hashRows += (patterns.map(_.asHashable) -> expr)
+      }
+
+      Value.Hashbox(Nil, new Environment(env), arity, hashRows, extraRow map { m => Row(m.patterns, m.expr) })
+    }
+  }
+
+  case class NativeFunction(func: Function[scala.List[Value], (Value, scala.List[Value])]) extends Value {
+    override def getType: JString = "Native"
+    override def toSlangString: JString = "<Native>"
+    override def toString: JString = "<Native>"
+  }
 }

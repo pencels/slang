@@ -1,15 +1,15 @@
 package slang.parse
 
 import slang.lex.{Token, TokenType}
-import slang.runtime.{Atom, Interpreter, Number, SlangNothing, SlangString, Value}
+import slang.runtime._
 
 object LiteralParselet {
   def valueFromToken(token: Token): Value = {
     token.ty match {
-      case TokenType.Nothing => SlangNothing
-      case TokenType.Atom(name) => Atom(name)
-      case TokenType.String(value) => SlangString(value)
-      case TokenType.Number(value) => Number(value)
+      case TokenType.Nothing => Value.Nothing
+      case TokenType.Atom(name) => Value.Atom(name)
+      case TokenType.String(value) => Value.String(value)
+      case TokenType.Number(value) => Value.Number(value)
       case ty => throw new ParseException(token, s"Cannot derive value from non-literal token type ${ty}.")
     }
   }

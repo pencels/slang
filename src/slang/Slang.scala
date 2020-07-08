@@ -1,18 +1,8 @@
 package slang
 
-import slang.lex.Lexer
-import slang.lex.Token
+import slang.lex._
 import slang.parse._
-import slang.runtime.Environment
-import slang.runtime.Interpreter
-import slang.runtime.SlangNothing
-import slang.runtime.RuntimeError
-import slang.runtime.Value
-import slang.runtime.NativeFunction
-import slang.runtime.Lazy
-import slang.runtime.Matchbox
-import slang.runtime.SlangString
-import slang.runtime.SlangList
+import slang.runtime._
 
 import java.io.IOException
 import java.nio.file.FileSystems
@@ -83,7 +73,7 @@ object Slang {
         val parser = new Parser(lexer)
 
         try {
-            var value: Value = SlangNothing
+            var value: Value = Value.Nothing
             for (expr <- parser) {
                 value = Interpreter.strictEval(rootEnv, expr, true)
 
@@ -91,7 +81,7 @@ object Slang {
                     println(new AstPrinter().print(expr))
                 }
             }
-            if (value != SlangNothing) {
+            if (value != Value.Nothing) {
                 println(new AstPrinter().print(value))
             }
         } catch {
@@ -153,27 +143,27 @@ object Slang {
     }
     
     def loadBuiltins(env: Environment) = {
-        env.define("__to_num__", NativeFunction({
-            case n :: rest => (slang.runtime.Number(n.tryAsDouble(null)), rest)
+        env.define("__to_num__", Value.NativeFunction({
+            case n :: rest => (Value.Number(n.tryAsDouble(null)), rest)
             case _ => throw new RuntimeError(null, "__to_num__ expects one argument")
         }))
 
-        env.define("__neg__", NativeFunction({
-            case n :: rest => (slang.runtime.Number(-n.tryAsDouble(null)), rest)
+        env.define("__neg__", Value.NativeFunction({
+            case n :: rest => (Value.Number(-n.tryAsDouble(null)), rest)
             case _ => throw new RuntimeError(null, "__neg__ expects one argument")
         }))
 
-        env.define("__strict__", NativeFunction({
+        env.define("__strict__", Value.NativeFunction({
             case v :: rest => (Interpreter.strictCoerce(v), rest)
             case _ => throw new RuntimeError(null, "__strict__ expects one argument")
         }))
 
-        env.define("__full_strict__", NativeFunction({
+        env.define("__full_strict__", Value.NativeFunction({
             case v :: rest => (Interpreter.strictCoerce(v, full = true), rest)
             case _ => throw new RuntimeError(null, "__full_strict__ expects one argument")
         }))
 
-        env.define("__lt__", NativeFunction({
+        env.define("__lt__", Value.NativeFunction({
             case l :: r :: rest =>
                 val truth = l.tryAsDouble(null) < r.tryAsDouble(null)
                 val value = if (truth) Interpreter.TRUE_ATOM else Interpreter.FALSE_ATOM
@@ -181,7 +171,7 @@ object Slang {
             case _ => throw new RuntimeError(null, "__lt__ expects two arguments")
         }))
 
-        env.define("__le__", NativeFunction({
+        env.define("__le__", Value.NativeFunction({
             case l :: r :: rest =>
                 val truth = l.tryAsDouble(null) <= r.tryAsDouble(null)
                 val value = if (truth) Interpreter.TRUE_ATOM else Interpreter.FALSE_ATOM
@@ -189,7 +179,7 @@ object Slang {
             case _ => throw new RuntimeError(null, "__le__ expects two arguments")
         }))
 
-        env.define("__gt__", NativeFunction({
+        env.define("__gt__", Value.NativeFunction({
             case l :: r :: rest =>
                 val truth = l.tryAsDouble(null) > r.tryAsDouble(null)
                 val value = if (truth) Interpreter.TRUE_ATOM else Interpreter.FALSE_ATOM
@@ -197,7 +187,7 @@ object Slang {
             case _ => throw new RuntimeError(null, "__gt__ expects two arguments")
         }))
 
-        env.define("__ge__", NativeFunction({
+        env.define("__ge__", Value.NativeFunction({
             case l :: r :: rest =>
                 val truth = l.tryAsDouble(null) >= r.tryAsDouble(null)
                 val value = if (truth) Interpreter.TRUE_ATOM else Interpreter.FALSE_ATOM
@@ -205,7 +195,7 @@ object Slang {
             case _ => throw new RuntimeError(null, "__ge__ expects two arguments")
         }))
 
-        env.define("__eq__", NativeFunction({
+        env.define("__eq__", Value.NativeFunction({
             case l :: r :: rest =>
                 val truth = l == r
                 val value = if (truth) Interpreter.TRUE_ATOM else Interpreter.FALSE_ATOM
@@ -213,7 +203,7 @@ object Slang {
             case _ => throw new RuntimeError(null, "__eq__ expects two arguments")
         }))
 
-        env.define("__ne__", NativeFunction({
+        env.define("__ne__", Value.NativeFunction({
             case l :: r :: rest =>
                 val truth = l != r
                 val value = if (truth) Interpreter.TRUE_ATOM else Interpreter.FALSE_ATOM
@@ -221,48 +211,48 @@ object Slang {
             case _ => throw new RuntimeError(null, "__ne__ expects two arguments")
         }))
 
-        env.define("__add__", NativeFunction({
+        env.define("__add__", Value.NativeFunction({
             case l :: r :: rest =>
-                val value = slang.runtime.Number(l.tryAsDouble(null) + r.tryAsDouble(null))
+                val value = Value.Number(l.tryAsDouble(null) + r.tryAsDouble(null))
                 (value, rest)
             case _ => throw new RuntimeError(null, "__add__ expects two Number arguments")
         }))
 
-        env.define("__sub__", NativeFunction({
+        env.define("__sub__", Value.NativeFunction({
             case l :: r :: rest =>
-                val value = slang.runtime.Number(l.tryAsDouble(null) - r.tryAsDouble(null))
+                val value = Value.Number(l.tryAsDouble(null) - r.tryAsDouble(null))
                 (value, rest)
             case _ => throw new RuntimeError(null, "__sub__ expects two Number arguments")
         }))
 
-        env.define("__mul__", NativeFunction({
+        env.define("__mul__", Value.NativeFunction({
             case l :: r :: rest =>
-                val value = slang.runtime.Number(l.tryAsDouble(null) * r.tryAsDouble(null))
+                val value = Value.Number(l.tryAsDouble(null) * r.tryAsDouble(null))
                 (value, rest)
             case _ => throw new RuntimeError(null, "__mul__ expects two Number arguments")
         }))
 
-        env.define("__div__", NativeFunction({
+        env.define("__div__", Value.NativeFunction({
             case l :: r :: rest =>
-                val value = slang.runtime.Number(l.tryAsDouble(null) / r.tryAsDouble(null))
+                val value = Value.Number(l.tryAsDouble(null) / r.tryAsDouble(null))
                 (value, rest)
             case _ => throw new RuntimeError(null, "__div__ expects two Number arguments")
         }))
 
-        env.define("__mod__", NativeFunction({
+        env.define("__mod__", Value.NativeFunction({
             case l :: r :: rest =>
-                val value = slang.runtime.Number(l.tryAsDouble(null) % r.tryAsDouble(null))
+                val value = Value.Number(l.tryAsDouble(null) % r.tryAsDouble(null))
                 (value, rest)
             case _ => throw new RuntimeError(null, "__mod__ expects two Number arguments")
         }))
 
-        env.define("__concat_str__", NativeFunction({
-            case SlangString(l) :: r :: rest => (SlangString(l + r.toSlangString), rest)
+        env.define("__concat_str__", Value.NativeFunction({
+            case Value.String(l) :: r :: rest => (Value.String(l + r.toSlangString), rest)
             case _ => throw new RuntimeError(null, "__concat_str__ expects two String arguments")
         }))
 
-        env.define("__concat_list__", NativeFunction({
-            case SlangList(l) :: SlangList(r) :: rest => (SlangList(l ++ r), rest)
+        env.define("__concat_list__", Value.NativeFunction({
+            case Value.List(l) :: Value.List(r) :: rest => (Value.List(l ++ r), rest)
             case _ => throw new RuntimeError(null, "__concat_list__ expects two List arguments")
         }))
     }

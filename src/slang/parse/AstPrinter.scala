@@ -1,6 +1,5 @@
 package slang.parse
-import slang.parse.Expr._
-import slang.parse.Pattern._
+
 import slang.runtime._
 
 class AstPrinter {
@@ -17,33 +16,33 @@ class AstPrinter {
     */
   def print(indent: Int, expr: Expr, withSemi: Boolean = false): String = {
     expr match {
-      case Assign(left, right) => print(left) + " = " + print(indent, right)
-      case Binary(left, op, right) => print(left) + " " + op.lexeme + " " + print(right)
-      case Block(expr) => printMaybeIndented(indent, print(indent + 1, expr), "{", "}", spaced = true)
+      case Expr.Assign(left, right) => print(left) + " = " + print(indent, right)
+      case Expr.Binary(left, op, right) => print(left) + " " + op.lexeme + " " + print(right)
+      case Expr.Block(expr) => printMaybeIndented(indent, print(indent + 1, expr), "{", "}", spaced = true)
       case Expr.Matchbox(matches) => printMaybeIndented(indent, matches.map(print(indent, _)), "{", "", "}", spaced = true)
-      case Call(left, args) => (left :: args).map(print(indent, _)).mkString(" ")
-      case Grouping(inner) => printMaybeIndented(indent, print(indent + 1, inner), "(", ")", spaced = false)
+      case Expr.Call(left, args) => (left :: args).map(print(indent, _)).mkString(" ")
+      case Expr.Grouping(inner) => printMaybeIndented(indent, print(indent + 1, inner), "(", ")", spaced = false)
       case Expr.Id(name) => name
       case Expr.Literal(value) => value.toString
-      case Postfix(expr, op) => print(expr) + op.lexeme
-      case Expr.SlangList(elements) => elements.map(print).mkString("[", ", ", "]")
-      case Prefix(op, expr) => op.lexeme + print(expr)
-      case Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
-      case Print(expr) => "print " + print(indent, expr)
-      case MatchRow(patterns, expr) => printRow(indent, patterns, expr)
-      case Seq(exprs) => printSeq(indent, exprs.map(print(indent, _)), withSemi)
+      case Expr.Postfix(expr, op) => print(expr) + op.lexeme
+      case Expr.List(elements) => elements.map(print).mkString("[", ", ", "]")
+      case Expr.Prefix(op, expr) => op.lexeme + print(expr)
+      case Expr.Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
+      case Expr.Print(expr) => "print " + print(indent, expr)
+      case Expr.MatchRow(patterns, expr) => printRow(indent, patterns, expr)
+      case Expr.Seq(exprs) => printSeq(indent, exprs.map(print(indent, _)), withSemi)
     }
   }
 
   def print(pattern: Pattern): String = {
     pattern match {
       case Pattern.Id(name) => name.lexeme
-      case Ignore(token) => "_"
-      case Strict(inner, full) => (if (full) "!" else "") + "{ " + print(inner) + " }"
+      case Pattern.Ignore(token) => "_"
+      case Pattern.Strict(inner, full) => (if (full) "!" else "") + "{ " + print(inner) + " }"
       case Pattern.Literal(value) => value.toString
-      case Pattern.SlangList(patterns) => patterns.map(print).mkString("[", ", ", "]")
-      case Cons(head, tail) => s"(${print(head)} . ${print(tail)})"
-      case Spread(name) => name.lexeme + ".."
+      case Pattern.List(patterns) => patterns.map(print).mkString("[", ", ", "]")
+      case Pattern.Cons(head, tail) => s"(${print(head)} . ${print(tail)})"
+      case Pattern.Spread(name) => name.lexeme + ".."
     }
   }
 
@@ -51,20 +50,20 @@ class AstPrinter {
 
   def print(indent: Int, value: Value): String = {
     value match {
-      case Lazy(environment, expr) => {
+      case Value.Lazy(environment, expr) => {
         environment.shortString + " " + printMaybeIndented(indent, print(indent + 1, expr), "{", "}", spaced = true)
       }
-      case slang.runtime.Matchbox(rows) => {
+      case Value.Matchbox(rows) => {
         val rowStrs = rows.map(print(indent + 1, _))
         printMaybeIndented(indent, rowStrs, "{", "", "}", spaced = true)
       }
-      case Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) => {
+      case Value.Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) => {
         val rowsStrs = rows.map(print(indent + 1, _))
         val allRows = rowsStrs ++ extraRow.map(r => List(print(indent + 1, r))).getOrElse(List())
         val partialArgsStr = if (partialArguments.length == 0) "" else partialArguments.mkString("[", ", ", "]") + " @ "
         partialArgsStr + innerEnvironment.shortString + " #" + printMaybeIndented(indent, allRows.toList, "{", "", "}", spaced = true)
       }
-      case slang.runtime.SlangList(values) => values.map(print).mkString("[", ", ", "]")
+      case Value.List(values) => values.map(print).mkString("[", ", ", "]")
       case _ => value.toString
     }
   }
@@ -78,19 +77,19 @@ class AstPrinter {
     params.map(print).mkString(" ") + " -> " + printRowResult(indent + 1, expr)
   }
 
-  def print(indent: Int, row: MatchboxRow): String = {
-    val MatchboxRow(innerEnvironment, params, result) = row
+  def print(indent: Int, row: Value.Matchbox.Row): String = {
+    val Value.Matchbox.Row(innerEnvironment, params, result) = row
     innerEnvironment.shortString + " " + printRow(indent, params, result)
   }
 
-  def print(indent: Int, row: HashboxRow): String = {
-    val HashboxRow(params, result) = row
+  def print(indent: Int, row: Value.Hashbox.Row): String = {
+    val Value.Hashbox.Row(params, result) = row
     printRow(indent, params, result)
   }
 
   def printRowResult(indent: Int, result: Expr): String = {
     result match {
-      case Seq(exprs) => print(indent + 1, result, withSemi = true)
+      case Expr.Seq(exprs) => print(indent + 1, result, withSemi = true)
       case _ => print(indent, result)
     }
   }

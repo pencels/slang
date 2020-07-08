@@ -40,9 +40,9 @@ class Environment(val parent: Environment) {
   def shortString: String = {
     val keyValPairs = environment.map({ case (name, value) =>
       val valueStr = value match {
-        case _: Matchbox => "<Matchbox>"
-        case _: Hashbox => "<Hashbox>"
-        case _: Lazy => "{ ... }"
+        case _: Value.Matchbox => "<Matchbox>"
+        case _: Value.Hashbox => "<Value.Hashbox>"
+        case _: Value.Lazy => "{ ... }"
         case _ => new AstPrinter().print(value)
       }
       s"$name=$valueStr"
