@@ -6,11 +6,11 @@ import slang.parse.{Expr, Pattern}
 import scala.annotation.tailrec
 
 case object Interpreter {
-  val TRUE_ATOM: Value = Atom("true")
-  val FALSE_ATOM: Value = Atom("false")
+  val TRUE_ATOM: Value = Value.Atom("true")
+  val FALSE_ATOM: Value = Value.Atom("false")
 
   def interpret(env: Environment, exprs: List[Expr]): Value = {
-    var ret: Value = SlangNothing
+    var ret: Value = Value.Nothing
 
     for (expr <- exprs) {
       ret = eval(env, expr)
@@ -26,7 +26,7 @@ case object Interpreter {
   @tailrec
   final def strictCoerce(value: Value, full: Boolean = false): Value  = {
     value match {
-      case Lazy(env, expr) =>
+      case Value.Lazy(env, expr) =>
         val value = eval(new Environment(env), expr)
         if (full) strictCoerce(value, full) else value
       case _ => value
@@ -61,7 +61,7 @@ case object Interpreter {
       val value = eval(env, right)
       // NOTE(michael): I know, wrapping this in a thunk is kinda ugly here, but it's for a good cause.
       if (!assign(env, left, Thunk.from(value), define = false)) throw new RuntimeError(null, "Match failed.")
-      SlangNothing
+      Value.Nothing
     case bin: Expr.Binary => evalBinExpr(env, bin)
     case Expr.Call(callee, argExprs) =>
       val closure = eval(env, callee)
@@ -71,10 +71,10 @@ case object Interpreter {
     case Expr.Id(name) => env.get(name)
     case Expr.Literal(value) => value
     case post: Expr.Postfix => evalPostfixExpr(env, post)
-    case Expr.SlangList(exprs) => SlangList(exprs.map(eval(env, _)))
+    case Expr.List(exprs) => Value.List(exprs.map(eval(env, _)))
     case unary: Expr.Prefix => evalPrefixOperator(env, unary)
-    case Expr.Block(expr) => Lazy(env, expr)
-    case Expr.Matchbox(matches) => Matchbox.toMatchboxOrHashbox(env, matches)
+    case Expr.Block(expr) => Value.Lazy(env, expr)
+    case Expr.Matchbox(matches) => Value.Matchbox.toMatchboxOrHashbox(env, matches)
     case Expr.Let(pattern, init) => {
       val value = eval(env, init)
 
@@ -83,13 +83,13 @@ case object Interpreter {
         throw new FailedMatchException(pattern, value)
       }
 
-      SlangNothing
+      Value.Nothing
     }
-    case Expr.Print(expr) => println(eval(env, expr).toSlangString); SlangNothing
+    case Expr.Print(expr) => println(eval(env, expr).toSlangString); Value.Nothing
     case Expr.MatchRow(_, _) => ??? // Should never reach this ???
     case Expr.Seq(exprs) => {
       if (exprs.isEmpty) {
-        SlangNothing
+        Value.Nothing
       } else {
         for (expr <- exprs.init) {
           strictEval(env, expr, full = true)
@@ -109,36 +109,36 @@ case object Interpreter {
       case TokenType.Operator("+") =>
         (left, right) match {
           // We love overloaded operators
-          case (Matchbox(left), Matchbox(right)) =>
-            Matchbox(left ++ right)
-          case (Matchbox(left), r: Hashbox) =>
-            val Matchbox(right) = transmuteHashbox(r)
-            Matchbox(left ++ right)
-          case (l: Hashbox, r: Hashbox) =>
-            val Matchbox(left) = transmuteHashbox(l)
-            val Matchbox(right) = transmuteHashbox(r)
-            Matchbox(left ++ right)
-          case (l: Hashbox, Matchbox(right)) =>
-            val Matchbox(left) = transmuteHashbox(l)
-            Matchbox(left ++ right)
+          case (Value.Matchbox(left), Value.Matchbox(right)) =>
+            Value.Matchbox(left ++ right)
+          case (Value.Matchbox(left), r: Value.Hashbox) =>
+            val Value.Matchbox(right) = transmuteHashbox(r)
+            Value.Matchbox(left ++ right)
+          case (l: Value.Hashbox, r: Value.Hashbox) =>
+            val Value.Matchbox(left) = transmuteHashbox(l)
+            val Value.Matchbox(right) = transmuteHashbox(r)
+            Value.Matchbox(left ++ right)
+          case (l: Value.Hashbox, Value.Matchbox(right)) =>
+            val Value.Matchbox(left) = transmuteHashbox(l)
+            Value.Matchbox(left ++ right)
           case _ =>
             // Use __primitives__ to handle operator calls
-            val typeAtom = Atom(left.getType)
+            val typeAtom = Value.Atom(left.getType)
             val primitives = env.get("__primitives__");
-            val args = List(typeAtom, Atom("get"), left, Atom("+"), right)
+            val args = List(typeAtom, Value.Atom("get"), left, Value.Atom("+"), right)
             call(env, primitives, args)
         }
       case TokenType.Operator(".") =>
         right match {
-          case SlangList(values) => SlangList(left :: values)
+          case Value.List(values) => Value.List(left :: values)
           case _ =>
             throw new RuntimeError(expr.op, s"Operator `.` expects a List for its right operand")
         }
       case TokenType.Operator(op) =>
         // Use __primitives__ to handle operator calls
-        val typeAtom = Atom(left.getType)
+        val typeAtom = Value.Atom(left.getType)
         val primitives = env.get("__primitives__");
-        val args = List(typeAtom, Atom("get"), left, Atom(op), right)
+        val args = List(typeAtom, Value.Atom("get"), left, Value.Atom(op), right)
         call(env, primitives, args)
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
@@ -150,9 +150,9 @@ case object Interpreter {
       case TokenType.Operator(op) =>
         val value = eval(env, expr.expr)
         // Use __primitives__ to handle operator calls
-        val typeAtom = Atom(value.getType)
+        val typeAtom = Value.Atom(value.getType)
         val primitives = env.get("__primitives__");
-        val args = List(typeAtom, Atom("get"), value, Atom(op))
+        val args = List(typeAtom, Value.Atom("get"), value, Value.Atom(op))
         call(env, primitives, args)
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
@@ -161,13 +161,13 @@ case object Interpreter {
   def evalPrefixOperator(env: Environment, expr: Expr.Prefix): Value = {
     val innerExpr = expr.expr
     expr.op.ty match {
-      case TokenType.Operator("&") => Lazy(env, innerExpr)
+      case TokenType.Operator("&") => Value.Lazy(env, innerExpr)
       case TokenType.Operator(op) =>
         val value = eval(env, expr.expr)
         // Use __primitives__ to handle operator calls
-        val typeAtom = Atom(value.getType)
+        val typeAtom = Value.Atom(value.getType)
         val primitives = env.get("__primitives__");
-        val args = List(typeAtom, Atom("get"), Atom(op), value)
+        val args = List(typeAtom, Value.Atom("get"), Value.Atom(op), value)
         call(env, primitives, args)
       case _ => ???
     }
@@ -176,28 +176,28 @@ case object Interpreter {
   @tailrec
   final def call(env: Environment, callee: Value, args: List[Value]): Value = {
     strictCoerce(callee, full = true) match {
-      case matchbox: Matchbox => {
+      case matchbox: Value.Matchbox => {
         applyMatchbox(matchbox, args) match {
           case (value, Nil) => value
           case (value, rest) => call(env, value, rest)
         }
       }
-      case hashbox: Hashbox => {
+      case hashbox: Value.Hashbox => {
         applyHashbox(hashbox, args) match {
           case (value, Nil) => value
           case (value, rest) => call(env, value, rest)
         }
       }
-      case NativeFunction(func) =>
+      case Value.NativeFunction(func) =>
         func(args) match {
           case (value, Nil) => value
           case (value, rest) => call(env, value, rest)
         }
       case callee => 
         // Use __primitives__ to handle method calls on primitives.
-        val typeAtom = Atom(callee.getType)
+        val typeAtom = Value.Atom(callee.getType)
         val primitives = env.get("__primitives__");
-        val newArgs = typeAtom :: Atom("get") :: callee :: args;
+        val newArgs = typeAtom :: Value.Atom("get") :: callee :: args;
         call(env, primitives, newArgs)
     }
   }
@@ -215,14 +215,14 @@ case object Interpreter {
       case Pattern.Literal(value) => value == strictCoerceThunk(arg, full = true)
       case Pattern.Cons(head, tail) =>
         strictCoerceThunk(arg, full = true) match {
-          case SlangList(valHead :: valTail) =>
+          case Value.List(valHead :: valTail) =>
             assign(env, head, Thunk.from(valHead)) &&
-              assign(env, tail, Thunk.from(SlangList(valTail)))
+              assign(env, tail, Thunk.from(Value.List(valTail)))
           case _ => false
         }
-      case Pattern.SlangList(patterns) =>
+      case Pattern.List(patterns) =>
         strictCoerceThunk(arg, full = true) match {
-          case SlangList(values) => assignList(env, patterns, values, define)
+          case Value.List(values) => assignList(env, patterns, values, define)
           case _ => false
         }
       case Pattern.Spread(_) => throw new RuntimeError(null, "Unexpected spread pattern, not at end of list!")
@@ -235,9 +235,9 @@ case object Interpreter {
       true
     case (List(Pattern.Spread(spread)), values) =>
       if (define)
-        env.define(spread.lexeme, SlangList(values))
+        env.define(spread.lexeme, Value.List(values))
       else
-        env.set(spread.lexeme, SlangList(values))
+        env.set(spread.lexeme, Value.List(values))
       // Match the rest of the list with a spread
       true
     case (pattern :: patterns, value :: values) =>
@@ -255,7 +255,7 @@ case object Interpreter {
    * if N = M -> Applied matchbox, and an empty list,
    * if N > M -> Partially applied matchbox, and and empty list.
    */
-  def applyMatchbox(matchbox: Matchbox, values: List[Value]): (Value, List[Value]) = {
+  def applyMatchbox(matchbox: Value.Matchbox, values: List[Value]): (Value, List[Value]) = {
     assert(values.nonEmpty, "We must have at least one value to apply to this matchbox...")
 
     // NOTE: we need to "refresh"/clone the environments for the matchbox, because this matchbox
@@ -272,9 +272,9 @@ case object Interpreter {
       remainingValues = remainingValues.tail
 
       // Build the list of new rows... but backwards.
-      var newRows: List[MatchboxRow] = Nil
+      var newRows: List[Value.Matchbox.Row] = Nil
 
-      for (MatchboxRow(innerEnvironment, parameters, result) <- remainingRows) {
+      for (Value.Matchbox.Row(innerEnvironment, parameters, result) <- remainingRows) {
         // I think we can assume every matchbox has at least one parameter.
         val parameter = parameters.head
         val remainingParameters = parameters.tail
@@ -287,7 +287,7 @@ case object Interpreter {
           }
 
           // Otherwise, we'll just save this pattern for later!
-          newRows = MatchboxRow(innerEnvironment, remainingParameters, result) :: newRows
+          newRows = Value.Matchbox.Row(innerEnvironment, remainingParameters, result) :: newRows
         }
       }
 
@@ -299,7 +299,7 @@ case object Interpreter {
       remainingRows = newRows.reverse
     }
 
-    (Matchbox(remainingRows), remainingValues)
+    (Value.Matchbox(remainingRows), remainingValues)
   }
 
   /** Apply a hashbox to a list of arguments.
@@ -309,8 +309,8 @@ case object Interpreter {
    * if N = M -> Applied hashbox, and an empty list,
    * if N > M -> Deferred hashbox (saving the args for later), and an empty list.
    */
-  def applyHashbox(hashbox: Hashbox, args: List[Value]): (Value, List[Value]) = {
-    val Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) = hashbox
+  def applyHashbox(hashbox: Value.Hashbox, args: List[Value]): (Value, List[Value]) = {
+    val Value.Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) = hashbox
 
     (hashbox.partialArguments ++ args) splitAt hashbox.arity match {
       case (values, remainder) if values.length == hashbox.arity => {
@@ -323,7 +323,7 @@ case object Interpreter {
           (eval(new Environment(hashbox.innerEnvironment), expr), remainder)
         } else extraRow match {
           // Otherwise, defer to the extra matchbox row...
-          case Some(HashboxRow(parameters, result)) =>
+          case Some(Value.Hashbox.Row(parameters, result)) =>
             val allValues = strictValues ++ remainder
             applyFinalHashboxRow(new Environment(innerEnvironment), parameters, result, allValues)
           case None =>
@@ -333,7 +333,7 @@ case object Interpreter {
       case (partialArguments, Nil) if args.length < hashbox.arity => {
         // If we have less than the needed values, put her back together. Defer!
         // TODO(michael): Semantically, it might be useful to coerce these args of their lazy NOW instead of later?
-        (Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow), Nil)
+        (Value.Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow), Nil)
       }
     }
   }
@@ -365,21 +365,21 @@ case object Interpreter {
       }
     }
 
-    (Matchbox(List(MatchboxRow(innerEnvironment, remainingParameters, result))), remainingValues)
+    (Value.Matchbox(List(Value.Matchbox.Row(innerEnvironment, remainingParameters, result))), remainingValues)
   }
 
-  def transmuteHashbox(hashbox: Hashbox): Matchbox = {
-    val Hashbox(partialArguments, env, _, rows, extraRow) = hashbox
-    var matchboxRows = rows.map({case (k, v) => MatchboxRow(env, k map { Pattern.Literal(_) }, v)}).toList
+  def transmuteHashbox(hashbox: Value.Hashbox): Value.Matchbox = {
+    val Value.Hashbox(partialArguments, env, _, rows, extraRow) = hashbox
+    var matchboxRows = rows.map({case (k, v) => Value.Matchbox.Row(env, k map { Pattern.Literal(_) }, v)}).toList
 
     // Append the extra row, if exists.
     extraRow match {
-      case Some(HashboxRow(parameters, result)) =>
-        matchboxRows ++= List(MatchboxRow(env, parameters, result))
+      case Some(Value.Hashbox.Row(parameters, result)) =>
+        matchboxRows ++= List(Value.Matchbox.Row(env, parameters, result))
       case _ =>
     }
 
-    val matchbox =  Matchbox(matchboxRows)
+    val matchbox =  Value.Matchbox(matchboxRows)
 
     // Now we need to apply the partial args, if they exist...
     if (partialArguments.nonEmpty) {
@@ -389,7 +389,7 @@ case object Interpreter {
       // then we will always receive a partially applied matchbox back... and we should
       // have no leftover arguments, either.
       assert(leftoverArguments.isEmpty)
-      appliedMatchbox.asInstanceOf[Matchbox]
+      appliedMatchbox.asInstanceOf[Value.Matchbox]
     } else {
       matchbox
     }

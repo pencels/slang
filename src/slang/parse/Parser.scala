@@ -1,16 +1,12 @@
 package slang.parse
 
 import scala.collection._
-import scala.jdk.CollectionConverters._
 import scala.annotation.tailrec
 import scala.util.control.Breaks._
 
 import slang.lex._
-import slang.lex.TokenType
 import slang.parse._
-import slang.runtime.SlangNothing
-import slang.lex.TokenType.Operator
-import slang.parse.Associativity
+import slang.runtime._
 
 object Parser {
     private val namedPrefixParselets = new mutable.HashMap[String, PrefixParselet]
@@ -52,7 +48,7 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
             case TokenType.KwOperator =>
                 operatorDecl
                 skipNewlines
-                return Expr.Literal(SlangNothing)
+                return Expr.Literal(Value.Nothing)
             case _ =>
         }
 
@@ -361,10 +357,10 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
     }
 
     def valueFromTokenType(ty: TokenType) = ty match {
-        case TokenType.Nothing => SlangNothing
-        case TokenType.Number(num) => slang.runtime.Number(num)
-        case TokenType.Atom(name) => slang.runtime.Atom(name)
-        case TokenType.String(value) => slang.runtime.SlangString(value)
+        case TokenType.Nothing => Value.Nothing
+        case TokenType.Number(num) => Value.Number(num)
+        case TokenType.Atom(name) => Value.Atom(name)
+        case TokenType.String(value) => Value.String(value)
         case _ => throw new Exception(s"Cant get a value from ${ty}")
     }
 
@@ -454,6 +450,6 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
             }
         }
         expect(TokenType.RBracket, "Expect ']' to end list pattern.")
-        Pattern.SlangList(patterns.reverse)
+        Pattern.List(patterns.reverse)
     }
 }

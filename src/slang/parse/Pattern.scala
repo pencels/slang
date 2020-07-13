@@ -1,7 +1,7 @@
 package slang.parse
 
 import slang.lex.{Token, TokenType}
-import slang.runtime.{Environment, Value}
+import slang.runtime._
 
 sealed trait Pattern {
   def toSlangString: String
@@ -31,11 +31,11 @@ object Pattern {
     override def asHashable: Value = value
   }
 
-  case class SlangList(patterns: List[Pattern]) extends Pattern {
+  case class List(patterns: scala.List[Pattern]) extends Pattern {
     override def toSlangString: String = "[" + (patterns map { _.toSlangString } mkString ", ") + "]"
 
     override def isHashable: Boolean = patterns forall { _.isHashable }
-    override def asHashable: Value = slang.runtime.SlangList(patterns map { _.asHashable })
+    override def asHashable: Value = Value.List(patterns map { _.asHashable })
   }
 
   case class Cons(head: Pattern, tail: Pattern) extends Pattern {
