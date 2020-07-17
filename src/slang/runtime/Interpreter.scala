@@ -86,7 +86,7 @@ case object Interpreter {
       Value.Nothing
     }
     case Expr.Print(expr) => println(eval(env, expr).toSlangString); Value.Nothing
-    case Expr.MatchRow(_, _) => ??? // Should never reach this ???
+    case Expr.MatchRow(_, _, _) => ??? // Should never reach this ???
     case Expr.Seq(exprs) => {
       if (exprs.isEmpty) {
         Value.Nothing
@@ -96,6 +96,25 @@ case object Interpreter {
         }
         eval(env, exprs.last)
       }
+    }
+  }
+
+  def mergeBoxes(left: Value, right: Value) = {
+    (left, right) match {
+      // We love overloaded operators
+      case (Value.Matchbox(left), Value.Matchbox(right)) =>
+        Value.Matchbox(left ++ right)
+      case (Value.Matchbox(left), r: Value.Hashbox) =>
+        val Value.Matchbox(right) = transmuteHashbox(r)
+        Value.Matchbox(left ++ right)
+      case (l: Value.Hashbox, r: Value.Hashbox) =>
+        val Value.Matchbox(left) = transmuteHashbox(l)
+        val Value.Matchbox(right) = transmuteHashbox(r)
+        Value.Matchbox(left ++ right)
+      case (l: Value.Hashbox, Value.Matchbox(right)) =>
+        val Value.Matchbox(left) = transmuteHashbox(l)
+        Value.Matchbox(left ++ right)
+      case _ => ???
     }
   }
 
@@ -109,24 +128,13 @@ case object Interpreter {
       case TokenType.Operator("+") =>
         (left, right) match {
           // We love overloaded operators
-          case (Value.Matchbox(left), Value.Matchbox(right)) =>
-            Value.Matchbox(left ++ right)
-          case (Value.Matchbox(left), r: Value.Hashbox) =>
-            val Value.Matchbox(right) = transmuteHashbox(r)
-            Value.Matchbox(left ++ right)
-          case (l: Value.Hashbox, r: Value.Hashbox) =>
-            val Value.Matchbox(left) = transmuteHashbox(l)
-            val Value.Matchbox(right) = transmuteHashbox(r)
-            Value.Matchbox(left ++ right)
-          case (l: Value.Hashbox, Value.Matchbox(right)) =>
-            val Value.Matchbox(left) = transmuteHashbox(l)
-            Value.Matchbox(left ++ right)
+          case (_: Value.Matchbox | _: Value.Hashbox, _: Value.Matchbox | _: Value.Hashbox) =>
+            mergeBoxes(left, right)
           case _ =>
-            // Use __primitives__ to handle operator calls
-            val typeAtom = Value.Atom(left.getType)
-            val primitives = env.get("__primitives__");
-            val args = List(typeAtom, Value.Atom("get"), left, Value.Atom("+"), right)
-            call(env, primitives, args)
+            // Use __dispatch__ to handle operator calls
+            val dispatchTable = env.get("__dispatch__");
+            val args = List(Value.Atom("+"), left, right)
+            call(env, dispatchTable, args)
         }
       case TokenType.Operator(".") =>
         right match {
@@ -135,11 +143,10 @@ case object Interpreter {
             throw new RuntimeError(expr.op, s"Operator `.` expects a List for its right operand")
         }
       case TokenType.Operator(op) =>
-        // Use __primitives__ to handle operator calls
-        val typeAtom = Value.Atom(left.getType)
-        val primitives = env.get("__primitives__");
-        val args = List(typeAtom, Value.Atom("get"), left, Value.Atom(op), right)
-        call(env, primitives, args)
+        // Use __dispatch__ to handle operator calls
+        val dispatchTable = env.get("__dispatch__");
+        val args = List(Value.Atom(op), left, right)
+        call(env, dispatchTable, args)
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
@@ -149,11 +156,10 @@ case object Interpreter {
     expr.op.ty match {
       case TokenType.Operator(op) =>
         val value = eval(env, expr.expr)
-        // Use __primitives__ to handle operator calls
-        val typeAtom = Value.Atom(value.getType)
-        val primitives = env.get("__primitives__");
-        val args = List(typeAtom, Value.Atom("get"), value, Value.Atom(op))
-        call(env, primitives, args)
+        // Use __dispatch__ to handle operator calls
+        val dispatchTable = env.get("__dispatch__");
+        val args = List(Value.Atom("postfix" + op), value)
+        call(env, dispatchTable, args)
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
@@ -164,11 +170,10 @@ case object Interpreter {
       case TokenType.Operator("&") => Value.Lazy(env, innerExpr)
       case TokenType.Operator(op) =>
         val value = eval(env, expr.expr)
-        // Use __primitives__ to handle operator calls
-        val typeAtom = Value.Atom(value.getType)
-        val primitives = env.get("__primitives__");
-        val args = List(typeAtom, Value.Atom("get"), Value.Atom(op), value)
-        call(env, primitives, args)
+        // Use __dispatch__ to handle operator calls
+        val dispatchTable = env.get("__dispatch__");
+        val args = List(Value.Atom("prefix" + op), value)
+        call(env, dispatchTable, args)
       case _ => ???
     }
   }
@@ -189,16 +194,15 @@ case object Interpreter {
         }
       }
       case Value.NativeFunction(func) =>
-        func(args) match {
+        func(env, args) match {
           case (value, Nil) => value
           case (value, rest) => call(env, value, rest)
         }
       case callee => 
-        // Use __primitives__ to handle method calls on primitives.
-        val typeAtom = Value.Atom(callee.getType)
-        val primitives = env.get("__primitives__");
-        val newArgs = typeAtom :: Value.Atom("get") :: callee :: args;
-        call(env, primitives, newArgs)
+        // Use __dispatch__ to handle method calls on values that are not core callables.
+        val dispatchTable = env.get("__dispatch__");
+        val newArgs = args.head :: callee :: args.tail;
+        call(env, dispatchTable, newArgs)
     }
   }
 
@@ -274,20 +278,23 @@ case object Interpreter {
       // Build the list of new rows... but backwards.
       var newRows: List[Value.Matchbox.Row] = Nil
 
-      for (Value.Matchbox.Row(innerEnvironment, parameters, result) <- remainingRows) {
+      for (Value.Matchbox.Row(innerEnvironment, parameters, guard, result) <- remainingRows) {
         // I think we can assume every matchbox has at least one parameter.
         val parameter = parameters.head
         val remainingParameters = parameters.tail
 
         // Try to assign the pattern, mutating the environment if needed.
         if (assign(innerEnvironment, parameter, arg)) {
-          // If the row is empty, then we're done here.
+          // If the row is empty, check the guard.
           if (remainingParameters.isEmpty) {
-            return (eval(innerEnvironment, result), remainingValues)
+            val passesGuard = guard map { eval(innerEnvironment, _) == Value.Atom("true") } getOrElse true
+            if (passesGuard) {
+              return (eval(innerEnvironment, result), remainingValues)
+            }
+          } else {
+            // Otherwise, we'll just save this pattern for later!
+            newRows = Value.Matchbox.Row(innerEnvironment, remainingParameters, guard, result) :: newRows
           }
-
-          // Otherwise, we'll just save this pattern for later!
-          newRows = Value.Matchbox.Row(innerEnvironment, remainingParameters, result) :: newRows
         }
       }
 
@@ -365,17 +372,17 @@ case object Interpreter {
       }
     }
 
-    (Value.Matchbox(List(Value.Matchbox.Row(innerEnvironment, remainingParameters, result))), remainingValues)
+    (Value.Matchbox(List(Value.Matchbox.Row(innerEnvironment, remainingParameters, None, result))), remainingValues)
   }
 
   def transmuteHashbox(hashbox: Value.Hashbox): Value.Matchbox = {
     val Value.Hashbox(partialArguments, env, _, rows, extraRow) = hashbox
-    var matchboxRows = rows.map({case (k, v) => Value.Matchbox.Row(env, k map { Pattern.Literal(_) }, v)}).toList
+    var matchboxRows = rows.map({case (k, v) => Value.Matchbox.Row(env, k map { Pattern.Literal(_) }, None, v)}).toList
 
     // Append the extra row, if exists.
     extraRow match {
       case Some(Value.Hashbox.Row(parameters, result)) =>
-        matchboxRows ++= List(Value.Matchbox.Row(env, parameters, result))
+        matchboxRows ++= List(Value.Matchbox.Row(env, parameters, None, result))
       case _ =>
     }
 

@@ -1,8 +1,10 @@
 operator prefix + - ! * *!
 operator infix left 300 @
 operator infix left 400 < <= > >= == !=
-operator infix left 500 + -
-operator infix left 600 * / %
+operator infix left 433 ||
+operator infix left 466 &&
+operator infix left 500 ++ ~ + -
+operator infix left 600 * / % `div` *~
 operator postfix !
 
 let if = {
@@ -29,25 +31,20 @@ let loop = {
     body -> body; loop body
 }
 
-let eval = { { x } -> x }
--- Could also be written like:
--- let eval = { x -> *x }
+let unwrap = { { x } -> x }
+let unravel = { !{ x } -> x }
 
-let eval_full = { !{ x } -> x }
--- Could also be written like:
--- let eval_full = { x -> *!x }
-
-let memoize = {
-    let memo = :None
+let thunk = {
+    let memo = []
     {
         lazy -> {
             {
-                :None -> (
-                    let v = __strict__ lazy
-                    memo = [:Some, v]
+                [] -> (
+                    let v = unwrap lazy
+                    memo = [v]
                     v
                 )
-                [:Some, v] -> v
+                [v] -> v
             } memo
         }
     }
@@ -60,137 +57,100 @@ let ref = {
     }
 }
 
-let map = {
-    f []       -> []
-    f [h, t..] -> [f h] + map f t
+let all = {
+    _ [] -> :true
+    cond (h . t) -> cond h && all cond t
 }
 
-let __primitives__ = memoize {
-    let atom_bindings = ref {
-        :! :true -> :false
-        :! :false -> :true
-        :* x -> x
-        :*! x -> x
-        a :@ m -> m a
-        _ :type -> "Atom"
-    }
-
-    let list_bindings = ref {
-        list :map f -> map f list
-        list :foreach f -> list :map { x -> *!(f x) }; nothing
-
-        []       :len -> 0
-        [_, t..] :len -> 1 + t :len
-
-        [] :empty? -> :true
-        _  :empty? -> :false
-
-        [] :mk_str start _ end -> "" + start + end
-        [h, t..] :mk_str start delim end -> (
-            let suffix = {
-                [] -> "" + end
-                [h, t..] -> ("" + delim + h) + suffix t
-            }
-
-            "" + start + h + suffix t
-        )
-        list :to_str -> list :mk_str "[" "," "]"
-
-        [] :try_at _ -> :None
-        [h, t..] :try_at 0 -> [:Some, h]
-        [h, t..] :try_at n -> t :try_at (n - 1)
-
-        list :at n -> list :try_at n :get_or "index out of bounds exception"
-
-        :* x -> x
-        :*! x -> x
-
-        l :+ r -> __concat_list__ l r
-        l :@ m -> m l
-        _ :type -> "List"
-    }
-
-    let nothing_bindings = ref {
-        :* x -> x
-        :*! x -> x
-        n :@ m -> m n
-        _ :type -> "Nothing"
-    }
-
-    let number_bindings = ref {
-        start :to end -> if (start > end) [] { [start] + *((start + 1) :to end) }
-
-        :+ n -> __to_num__ n
-        :- n -> __neg__ n
-
-        a :+ b -> __add__ a *!b
-        a :- b -> __sub__ a *!b
-
-        a :* b -> __mul__ a *!b
-        a :/ b -> __div__ a *!b
-        a :% b -> __mod__ a *!b
-
-        a :< b -> __lt__ a *!b
-        a :<= b -> __le__ a *!b
-        a :> b -> __gt__ a *!b
-        a :>= b -> __ge__ a *!b
-        a :== b -> __eq__ a *!b
-        a :!= b -> __ne__ a *!b
-
-        :* x -> x
-        :*! x -> x
-
-        0 :! -> 1
-        n :! -> n * (n - 1)!
-
-        0 :times _ -> nothing
-        n :times body -> body; (n - 1) :times body
-
-        n :@ m -> m n
-        _ :type -> "Number"
-    }
-
-    let string_bindings = ref {
-        :* x -> x
-        :*! x -> x
-
-        s :+ other -> __concat_str__ s *!other
-
-        a :== b -> __eq__ a *!b
-        a :!= b -> __ne__ a *!b
-
-        s :@ m -> m s
-        _ :type -> "String"
-    }
-    
-    let lazy_bindings = ref {
-        :* l -> __strict__ l
-        :*! l -> __full_strict__ l
-        l :@ m -> m l
-    }
-
-    {
-        :Atom -> atom_bindings
-        :List -> list_bindings
-        :Nothing -> nothing_bindings
-        :Number -> number_bindings
-        :String -> string_bindings
-        :Lazy -> lazy_bindings
-    }
+let any = {
+    _ [] -> :false
+    cond (h . t) -> cond h || any cond t
 }
 
-let extend_prim = {
-    type extension -> __primitives__ type :set (extension + __primitives__ type :get)
-}
+let is_atom = { val -> type val == "Atom" }
+let is_lazy = { val -> type val == "Lazy" }
+let is_list = { val -> type val == "List" }
+let is_num = { val -> type val == "Number" }
+let is_string = { val -> type val == "String" }
 
--- extend Option types
-extend_prim :Atom {
-    :None :get -> "error"
-    :None :get_or alt -> alt
-}
-extend_prim :List {
-    [:Some, x] :get -> x
-    [:Some, x] :get_or _ -> x
+dispatch {
+    :prefix! :true -> :false
+    :prefix! :false -> :true
+
+    :&& :false _ -> :false
+    :&& :true :true -> :true
+
+    :|| :true _ -> :true
+    :|| :false :false -> :false
+
+    :== x y -> __eq__ *!x *!y
+    :!= x y -> !(x == y)
+
+    :prefix+ n -> __to_num__ *!n
+    :prefix- n -> __neg__ *!n
+
+    :postfix! 0 -> 1
+    :postfix! n -> n * (n - 1)!
+
+    :+ a b -> __add__ *!a *!b
+    :- a b -> __sub__ *!a *!b
+
+    :* a b | all is_num [a, b] -> __mul__ *!a *!b
+    :/ a b -> __fdiv__ *!a *!b
+    :div a b -> __div__ *!a *!b
+    :% a b -> __mod__ *!a *!b
+
+    :< a b -> __lt__ *!a *!b
+    :> a b -> __gt__ *!a *!b
+    :<= a b -> !(a > b)
+    :>= a b -> !(a < b)
+
+    :++ a b -> __concat_list__ *!a *!b
+    :~ a b -> __concat_str__ *!a *!b
+
+    :*~ 0 s | is_string s -> ""
+    :*~ n s | is_num n && is_string s -> s ~ (n - 1) *~ s
+
+    :prefix*   {x} -> x
+    :prefix*! !{x} -> x
+
+    :@ arg matchbox -> matchbox arg
+
+    :map [] _ -> []
+    :map (h . t) f -> f h . t :map f
+
+    :foreach list f | is_list list -> list :map { x -> *!(f x) }; nothing
+
+    :len [] -> 0
+    :len (_ . t) -> 1 + t :len
+
+    :empty? [] -> :true
+    :empty? _ -> :false
+
+    :mk_str [] start _ end -> "" ~ start ~ end
+    :mk_str (h . t) start delim end -> (
+        let suffix = {
+            [] -> "" ~ end
+            h . t -> ("" ~ delim ~ h) ~ suffix t
+        }
+
+        "" ~ start ~ h ~ suffix t
+    )
+
+    :to_str list | is_list list -> list :mk_str "[" ", " "]"
+
+    :try_at [] _ -> :None
+    :try_at (h . t) 0 -> [:Some, h]
+    :try_at (_ . t) n -> t :try_at (n - 1)
+
+    :at list n | is_list list && is_num n ->
+        list :try_at n :get_or "index out of bounds exception"
+
+    :to start end | all is_num [start, end] ->
+        if_unwrap (start > end) [] { start . (start + 1) :to end }
+
+    :times 0 _ -> nothing
+    :times n body -> body; (n - 1) :times body
 }
 
 nothing

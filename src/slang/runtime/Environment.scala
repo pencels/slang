@@ -41,7 +41,7 @@ class Environment(val parent: Environment) {
     val keyValPairs = environment.map({ case (name, value) =>
       val valueStr = value match {
         case _: Value.Matchbox => "<Matchbox>"
-        case _: Value.Hashbox => "<Value.Hashbox>"
+        case _: Value.Hashbox => "<Hashbox>"
         case _: Value.Lazy => "{ ... }"
         case _ => new AstPrinter().print(value)
       }

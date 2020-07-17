@@ -110,7 +110,7 @@ object Value {
   }
 
   object Matchbox {
-    case class Row(innerEnvironment: Environment, parameters: scala.List[Pattern], result: Expr) {
+    case class Row(innerEnvironment: Environment, parameters: scala.List[Pattern], guard: Option[Expr], result: Expr) {
       def toSlangString: JString = {
         innerEnvironment.shortString + " " + (parameters.map({
           _.toSlangString
@@ -119,12 +119,12 @@ object Value {
 
       def withNewEnvironment: Row = {
         // TODO(michael): It's probably better to treat Environment objects as... immutable.
-        Value.Matchbox.Row(new Environment(innerEnvironment), parameters, result)
+        Value.Matchbox.Row(new Environment(innerEnvironment), parameters, guard, result)
       }
     }
 
     def from(env: Environment, ast: scala.List[Expr.MatchRow]): Matchbox =
-      Matchbox(ast map { m => Row(env, m.patterns, m.expr) })
+      Matchbox(ast map { m => Row(env, m.patterns, m.guard, m.expr) })
 
     def toMatchboxOrHashbox(env: Environment, ast: scala.List[Expr.MatchRow]): Value = ast.reverse match {
       case literalPatterns if isHashboxable(literalPatterns, None) =>
@@ -135,13 +135,14 @@ object Value {
       case _ => Matchbox.from(env, ast)
     }
 
-    /** Whether this set of literal patterns are matchbox-able, that is:
+    /** Whether this set of literal patterns are hashbox-able, that is:
      *  1. If there's at least one hashable pattern,
      *  2. All of the hashable patterns are the same arity, and
-     *  3. The additional non-hashable pattern (if exists) is the same arity.
+     *  3. The hashable patterns have no guards, and
+     *  4. The additional non-hashable pattern (if exists) is the same arity.
      */
     def isHashboxable(literalPatterns: scala.List[Expr.MatchRow], extraPattern: Option[Expr.MatchRow]): Boolean =
-      literalPatterns.nonEmpty && literalPatterns.forall(_.isHashable) && sameArity(literalPatterns map {
+      literalPatterns.nonEmpty && literalPatterns.forall(_.isHashable) && literalPatterns.forall(_.guard.isEmpty) && sameArity(literalPatterns map {
         _.patterns
       }) && extraPattern.forall(_.patterns.length == literalPatterns.head.patterns.length)
 
@@ -202,7 +203,7 @@ object Value {
       val arity = literalPatterns.head.patterns.length
       var hashRows: Map[scala.List[Value], Expr] = Map.empty
 
-      for (Expr.MatchRow(patterns, expr) <- literalPatterns) {
+      for (Expr.MatchRow(patterns, _, expr) <- literalPatterns) {
         hashRows += (patterns.map(_.asHashable) -> expr)
       }
 
@@ -210,7 +211,7 @@ object Value {
     }
   }
 
-  case class NativeFunction(func: Function[scala.List[Value], (Value, scala.List[Value])]) extends Value {
+  case class NativeFunction(func: Function2[Environment, scala.List[Value], (Value, scala.List[Value])]) extends Value {
     override def getType: JString = "Native"
     override def toSlangString: JString = "<Native>"
     override def toString: JString = "<Native>"

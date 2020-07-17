@@ -37,22 +37,36 @@ class BlockParselet extends PrefixParselet {
     }
 
     private def parseMatchParams(parser: Parser): List[Pattern] = {
-        var patterns: List[Pattern] = Nil
+        var patterns = new mutable.ListBuffer[Pattern]
 
         // Read up all the patterns.
-        while (!parser.check(TokenType.Arrow)) {
-            patterns = parser.pattern() :: patterns
+        var continue = true
+        while (continue) {
+            parser.peek.ty match {
+                case TokenType.Arrow | TokenType.Operator("|") =>
+                    continue = false
+                case _ => 
+                    patterns.addOne(parser.pattern())
+            }
         }
 
-        patterns.reverse
+        patterns.toList
     }
 
     private def parseMatchRow(parser: Parser): Expr.MatchRow = {
         val patterns = parseMatchParams(parser)
+
+        val guard = parser.peek.ty match {
+            case TokenType.Operator("|") =>
+                parser.advance // Eat the '|'
+                Some(parser.expression())
+            case _ => None
+        }
+
         parser.expect(TokenType.Arrow, "Expect -> after pattern.");
 
         val seq = parser.sequenceExpr
-        Expr.MatchRow(patterns, seq);
+        Expr.MatchRow(patterns, guard, seq);
     }
 
     private def parseMatchRows(parser: Parser): List[Expr.MatchRow] = {

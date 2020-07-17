@@ -29,7 +29,7 @@ class AstPrinter {
       case Expr.Prefix(op, expr) => op.lexeme + print(expr)
       case Expr.Let(pattern, init) => "let " + print(pattern) + " = " + print(indent, init)
       case Expr.Print(expr) => "print " + print(indent, expr)
-      case Expr.MatchRow(patterns, expr) => printRow(indent, patterns, expr)
+      case Expr.MatchRow(patterns, guard, expr) => printRow(indent, patterns, guard, expr)
       case Expr.Seq(exprs) => printSeq(indent, exprs.map(print(indent, _)), withSemi)
     }
   }
@@ -68,8 +68,9 @@ class AstPrinter {
     }
   }
 
-  def printRow(indent: Int, patterns: List[Pattern], expr: Expr): String = {
-    patterns.map(print).mkString(" ") + " -> " + printRowResult(indent + 1, expr)
+  def printRow(indent: Int, patterns: List[Pattern], guard: Option[Expr], expr: Expr): String = {
+    val guardStr = guard map { " | " + print(_) } getOrElse ""
+    patterns.map(print).mkString(" ") + guardStr + " -> " + printRowResult(indent + 1, expr)
   }
 
   def print(indent: Int, row: (List[Value], Expr)): String = {
@@ -78,13 +79,13 @@ class AstPrinter {
   }
 
   def print(indent: Int, row: Value.Matchbox.Row): String = {
-    val Value.Matchbox.Row(innerEnvironment, params, result) = row
-    innerEnvironment.shortString + " " + printRow(indent, params, result)
+    val Value.Matchbox.Row(innerEnvironment, params, guard, result) = row
+    innerEnvironment.shortString + " " + printRow(indent, params, guard, result)
   }
 
   def print(indent: Int, row: Value.Hashbox.Row): String = {
     val Value.Hashbox.Row(params, result) = row
-    printRow(indent, params, result)
+    printRow(indent, params, None, result)
   }
 
   def printRowResult(indent: Int, result: Expr): String = {

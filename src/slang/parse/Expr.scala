@@ -15,7 +15,7 @@ object Expr {
 
   case class Matchbox(rows: scala.List[MatchRow]) extends Expr
 
-  case class MatchRow(patterns: scala.List[Pattern], expr: Expr) extends Expr {
+  case class MatchRow(patterns: scala.List[Pattern], guard: Option[Expr], expr: Expr) extends Expr {
     def isHashable: Boolean = patterns forall { _.isHashable }
   }
 

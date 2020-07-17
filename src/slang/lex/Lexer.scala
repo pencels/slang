@@ -10,6 +10,7 @@ object Lexer {
     // Add tokens to trie so that we can recognize them for patterns.
     operatorTrie.add("&!") 
     operatorTrie.add("..")
+    operatorTrie.add("|")
 
     val EOF = '\u0000'
     val operatorBoundaryChars = raw"""$EOF\s"`()\[\]{};,"""
