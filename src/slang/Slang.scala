@@ -21,7 +21,7 @@ object Slang {
      */
     def main(args: Array[String]) = {
         val input = new Scanner(System.in)
-        val rootEnv = new Environment
+        val rootEnv = Environment.empty
 
         loadBuiltins(rootEnv)
 

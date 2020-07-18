@@ -27,7 +27,7 @@ case object Interpreter {
   final def strictCoerce(value: Value, full: Boolean = false): Value  = {
     value match {
       case Value.Lazy(env, expr) =>
-        val value = eval(new Environment(env), expr)
+        val value = eval(Environment.fresh(env), expr)
         if (full) strictCoerce(value, full) else value
       case _ => value
     }
@@ -67,7 +67,7 @@ case object Interpreter {
       val closure = eval(env, callee)
       val args = argExprs.map(eval(env, _))
       call(env, closure, args)
-    case Expr.Grouping(inner) => eval(new Environment(env), inner) // Groupings spawn a new env.
+    case Expr.Grouping(inner) => eval(Environment.fresh(env), inner) // Groupings spawn a new env.
     case Expr.Id(name) => env.get(name)
     case Expr.Literal(value) => value
     case post: Expr.Postfix => evalPostfixExpr(env, post)
@@ -327,12 +327,12 @@ case object Interpreter {
         if (rows.contains(strictValues)) {
           // Cool, we just hash our value and call it a day.
           val expr = hashbox.rows(strictValues)
-          (eval(new Environment(hashbox.innerEnvironment), expr), remainder)
+          (eval(Environment.fresh(hashbox.innerEnvironment), expr), remainder)
         } else extraRow match {
           // Otherwise, defer to the extra matchbox row...
           case Some(Value.Hashbox.Row(parameters, result)) =>
             val allValues = strictValues ++ remainder
-            applyFinalHashboxRow(new Environment(innerEnvironment), parameters, result, allValues)
+            applyFinalHashboxRow(Environment.fresh(innerEnvironment), parameters, result, allValues)
           case None =>
             throw new NoMatchException
         }

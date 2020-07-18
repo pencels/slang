@@ -33,7 +33,7 @@ class BlockParselet extends PrefixParselet {
 
     private def parseMatchBlock(parser: Parser): Expr = {
         val matches = parseMatchRows(parser)
-        Expr.Matchbox(matches);
+        Expr.Matchbox(matches)
     }
 
     private def parseMatchParams(parser: Parser): List[Pattern] = {

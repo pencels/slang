@@ -119,7 +119,7 @@ object Value {
 
       def withNewEnvironment: Row = {
         // TODO(michael): It's probably better to treat Environment objects as... immutable.
-        Value.Matchbox.Row(new Environment(innerEnvironment), parameters, guard, result)
+        Value.Matchbox.Row(Environment.fresh(innerEnvironment), parameters, guard, result)
       }
     }
 
@@ -207,7 +207,7 @@ object Value {
         hashRows += (patterns.map(_.asHashable) -> expr)
       }
 
-      Value.Hashbox(Nil, new Environment(env), arity, hashRows, extraRow map { m => Row(m.patterns, m.expr) })
+      Value.Hashbox(Nil, Environment.fresh(env), arity, hashRows, extraRow map { m => Row(m.patterns, m.expr) })
     }
   }
 

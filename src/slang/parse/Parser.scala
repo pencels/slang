@@ -195,7 +195,7 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
         }
     }
 
-    def getInfixParselet(token: Token): InfixParselet = token.ty match {
+    def getInfixParselet(token: Token): Option[InfixParselet] = token.ty match {
         case TokenType.LParen |
              TokenType.LCurly |
              TokenType.LBracket |
@@ -203,16 +203,16 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
              _: TokenType.Id |
              _: TokenType.Atom |
              _: TokenType.Number |
-             _: TokenType.String => new CallParselet
+             _: TokenType.String => Some(new CallParselet)
 
         case TokenType.Operator(op) =>
-            Parser.namedInfixParselets.get(op).getOrElse {
+            Some(Parser.namedInfixParselets.get(op).getOrElse {
                 throw new ParseException(token, s"Operator `$op` is not infix")
-            }
+            })
         case TokenType.UnknownOperator(op) =>
             throw new ParseException(token, s"Unknown infix operator `$op`")
 
-        case _ => null
+        case _ => None
     }
 
     def getPrefixParselet(token: Token): PrefixParselet = token.ty match {
@@ -251,35 +251,32 @@ class Parser(var lexer: Lexer) extends Iterator[Expr] {
         var token = advance
         val prefix = getPrefixParselet(token)
 
-        if (prefix == null) {
-            throw new ParseException(token, s"Could not parse token: ${token}")
-        }
-
         var left = prefix.parse(this, token)
 
+        parseInfix(left, token, precedence)
+    }
+
+    @tailrec
+    final def parseInfix(left: Expr, infixToken: Token, precedence: Int): Expr = {
+        var token = infixToken
         // If there is a non-infix operator token, skip infix operator parsing.
-        if (getInfixParselet(peek) == null) {
-            return left
+        getInfixParselet(peek) match {
+            case Some(infix) if precedence < infix.getPrecedence =>
+                // Don't eat a token for call parselet, since it needs to preserve
+                // tokens for expression() calls.
+                if (!infix.isInstanceOf[CallParselet]) {
+                    token = advance
+                }
+                val newLeft = infix.parse(this, left, token)
+                parseInfix(newLeft, token, precedence)
+            case _ => left
         }
-
-        while (precedence < currentPrecedence) {
-            val nextToken = peek
-            if (!getInfixParselet(nextToken).isInstanceOf[CallParselet]) {
-                token = advance
-            }
-            val infix = getInfixParselet(nextToken)
-            left = infix.parse(this, left, token)
-        }
-
-        left
     }
 
     def currentPrecedence: Int = {
-        val parser = getInfixParselet(peek)
-        if (parser != null) {
-            parser.getPrecedence
-        } else {
-            0
+        getInfixParselet(peek) match {
+            case Some(parselet) => parselet.getPrecedence
+            case None => 0
         }
     }
 

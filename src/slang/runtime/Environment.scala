@@ -4,12 +4,8 @@ import slang.parse.AstPrinter
 
 import scala.collection._
 
-class Environment(val parent: Environment) {
-  final private val environment = new mutable.HashMap[String, Value]
-
-  def this() = {
-    this(null)
-  }
+class Environment(val parent: Option[Environment]) {
+  private val environment = new mutable.HashMap[String, Value]
 
   def define(name: String, value: Value): Unit = environment.put(name, value)
 
@@ -20,8 +16,8 @@ class Environment(val parent: Environment) {
 
   def tryGet(name: String): Option[Value] = (environment.get(name), parent) match {
     case (Some(v), _) => Some(v)
-    case (None, null) => None
-    case (None, p) => p.tryGet(name)
+    case (None, None) => None
+    case (None, Some(p)) => p.tryGet(name)
   }
 
   def `with`(name: String, value: Value): Environment = {
@@ -30,11 +26,15 @@ class Environment(val parent: Environment) {
   }
 
   def set(name: String, value: Value): Unit = {
-    if (environment.contains(name))
+    if (environment contains name) {
       environment.put(name, value)
-    else if (parent == null)
-      throw new RuntimeException("Name '" + name + "' assigned to but has not been declared.")
-    else parent.set(name, value)
+    } else {
+      parent match {
+        case Some(p) => p.set(name, value)
+        case None => 
+          throw new RuntimeException("Name '" + name + "' assigned to but has not been declared.")
+      }
+    }
   }
 
   def shortString: String = {
@@ -62,4 +62,18 @@ class Environment(val parent: Environment) {
   def isEmpty: Boolean = environment.isEmpty
 
   def update(newBindings: Environment): Unit = environment ++= newBindings.environment
+}
+
+object Environment {
+  /**
+    * Returns a fresh environment with an existing environment as its parent.
+    *
+    * @param env The parent env.
+    */
+  def fresh(env: Environment) = new Environment(Some(env))
+
+  /**
+    * Returns an empty environment with no parent.
+    */
+  def empty = new Environment(None)
 }
