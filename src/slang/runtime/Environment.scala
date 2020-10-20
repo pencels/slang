@@ -20,6 +20,10 @@ class Environment(val parent: Option[Environment]) {
     case (None, Some(p)) => p.tryGet(name)
   }
 
+  def tryGetCurrentScope(name: String): Option[Value] = environment.get(name)
+
+  def getVars(): List[(String, Value)] = environment.toList
+
   def `with`(name: String, value: Value): Environment = {
     environment.put(name, value)
     this
@@ -43,6 +47,7 @@ class Environment(val parent: Option[Environment]) {
         case _: Value.Matchbox => "<Matchbox>"
         case _: Value.Hashbox => "<Hashbox>"
         case _: Value.Lazy => "{ ... }"
+        case _: Value.Chain => "<Chain>"
         case _ => new AstPrinter().print(value)
       }
       s"$name=$valueStr"

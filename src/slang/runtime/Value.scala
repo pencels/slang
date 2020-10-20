@@ -63,7 +63,7 @@ object Value {
   case class Atom(name: JString) extends Value {
     override def getType = "Atom"
 
-    override def toSlangString = name
+    override def toSlangString = toString
 
     override def toString = if (name contains ' ') {
       ":`" + name + "`"
@@ -94,7 +94,10 @@ object Value {
     override def isHashable: Boolean = false
   }
 
-  case class Matchbox(rows: scala.List[Matchbox.Row]) extends Value {
+  trait Callable extends Value
+  trait Box extends Callable
+
+  case class Matchbox(rows: scala.List[Matchbox.Row]) extends Box {
     override def getType: JString = "Matchbox"
 
     override def toString: JString = {
@@ -161,7 +164,7 @@ object Value {
                     innerEnvironment: Environment,
                     arity: Int,
                     rows: Map[scala.List[Value], Expr],
-                    extraRow: Option[Hashbox.Row]) extends Value {
+                    extraRow: Option[Hashbox.Row]) extends Box {
 
     override def getType: JString = "Hashbox"
 
@@ -211,9 +214,25 @@ object Value {
     }
   }
 
-  case class NativeFunction(func: Function2[Environment, scala.List[Value], (Value, scala.List[Value])]) extends Value {
+  case class NativeFunction(func: Function2[Environment, scala.List[Value], (Value, scala.List[Value])]) extends Callable {
     override def getType: JString = "Native"
     override def toSlangString: JString = "<Native>"
     override def toString: JString = "<Native>"
+  }
+
+  case class Chain(boxes: scala.List[Callable], deferredArgs: scala.List[Thunk] = Nil) extends Callable {
+    override def getType: JString = "Chain"
+    override def toSlangString: JString = {
+      deferredArgs.map(_.unevaluatedValue.toSlangString).mkString("[", ", ", "]") + boxes.map(_.toSlangString).mkString("\n |\n v\n")
+    }
+    override def toString: JString = toSlangString
+
+    def head: Value = {
+      boxes match {
+        case Nil => throw new RuntimeError(null, "Tried to get head of an empty chain!")
+        case (chain: Value.Chain) :: _ => chain.head
+        case head :: _ => head
+      }
+    }
   }
 }

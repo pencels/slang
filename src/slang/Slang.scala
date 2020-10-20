@@ -255,7 +255,8 @@ object Slang {
 
         env.define("__concat_str__", Value.NativeFunction({
             case (_, Value.String(l) :: r :: rest) => (Value.String(l + r.toSlangString), rest)
-            case _ => throw new RuntimeError(null, "__concat_str__ expects two String arguments")
+            case _ => throw new RuntimeError(null, "__concat_str__ expects two arguments with " +
+                "the first being a String")
         }))
 
         env.define("__concat_list__", Value.NativeFunction({
@@ -263,20 +264,42 @@ object Slang {
             case _ => throw new RuntimeError(null, "__concat_list__ expects two List arguments")
         }))
 
-        env.define("type", Value.NativeFunction({
+        env.define("__type__", Value.NativeFunction({
             case (_, v :: rest) => (Value.String(v.getType), rest)
-            case _ => throw new RuntimeError(null, "__type__ expects one argument")
+            case _ => throw new RuntimeError(null, "type expects one argument")
         }))
 
-        env.define("dispatch", Value.NativeFunction({
-            case (env, extension :: rest) =>
-                val newDispatch = env.tryGet("__dispatch__") match {
-                    case Some(dispatch) => Interpreter.mergeBoxes(extension, dispatch)
-                    case None => extension
+        def dispatchChain(extension: Value.Callable, dispatch: Value.Callable) = (extension, dispatch) match {
+            case (extension: Value.Box, dispatch: Value.Box) => Interpreter.mergeBoxes(extension, dispatch)
+            case _ => Value.Chain(List(extension, dispatch), Nil)
+        }
+
+        env.define("add_dispatch", Value.NativeFunction({
+            case (env, (extension: Value.Callable) :: rest) =>
+                val newDispatch = env.tryGetCurrentScope("dispatch_table") match {
+                    case Some(dispatch: Value.Callable) => dispatchChain(extension, dispatch)
+                    case Some(dispatch) => throw new RuntimeError(null, "dispatch_table is not callable")
+                    case None => env.tryGet("dispatch_table") match {
+                        case Some(dispatch: Value.Callable) => dispatchChain(extension, dispatch)
+                        case Some(dispatch) => throw new RuntimeError(null, "dispatch_table is not callable")
+                        case None => Value.Chain(List(extension), Nil)
+                    }
                 }
-                env.define("__dispatch__", newDispatch)
+                env.define("dispatch_table", newDispatch)
                 (Value.Nothing, rest)
-            case _ => throw new RuntimeError(null, "dispatch expects one argument" )
+            case _ => throw new RuntimeError(null, "add_dispatch expects one argument" )
+        }))
+
+        env.define("call_dispatch", Value.NativeFunction(Interpreter.callDispatch))
+
+        env.define("apply", Value.NativeFunction({
+            case (env, callee :: Value.List(args) :: rest) => (Interpreter.call(env, callee, args), rest)
+            case _ => throw new RuntimeError(null, "apply expects two arguments")
+        }))
+
+        env.define("chain", Value.NativeFunction({
+            case (env, (first: Value.Callable) :: (second: Value.Callable) :: rest) => (Value.Chain(List(first, second), Nil), rest)
+            case _ => throw new RuntimeError(null, "chain only accepts callables")
         }))
     }
 }

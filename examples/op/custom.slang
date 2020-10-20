@@ -1,7 +1,7 @@
 -- Test custom operator declarations.
 
 operator infix left 700 ^
-dispatch {
+add_dispatch {
     :^ !{a} !{b} | all is_num [a, b] ->
         if (b == 0) 1 { a * a ^ (b - 1) }
     
@@ -13,7 +13,7 @@ let box = {
 }
 
 operator prefix ^
-dispatch {
+add_dispatch {
     := [:Box, r] val -> r :set val
     :prefix^ [:Box, r] -> r :get
 }

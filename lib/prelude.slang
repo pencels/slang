@@ -1,10 +1,16 @@
 operator prefix + - ! * *!
+
 operator infix left 300 @
+operator infix right 300 $
+operator infix left 350 >> >.>
+operator infix right 350 <<
+
 operator infix left 400 < <= > >= == !=
 operator infix left 433 ||
 operator infix left 466 &&
 operator infix left 500 ++ ~ + -
 operator infix left 600 * / % `div` *~
+
 operator postfix !
 
 let if = {
@@ -67,21 +73,31 @@ let any = {
     cond (h . t) -> cond h || any cond t
 }
 
-let is_atom = { val -> type val == "Atom" }
-let is_lazy = { val -> type val == "Lazy" }
-let is_list = { val -> type val == "List" }
-let is_num = { val -> type val == "Number" }
-let is_string = { val -> type val == "String" }
+let is_atom = { val -> __type__ val == "Atom" }
+let is_lazy = { val -> __type__ val == "Lazy" }
+let is_list = { val -> __type__ val == "List" }
+let is_num = { val -> __type__ val == "Number" }
+let is_string = { val -> __type__ val == "String" }
 
-dispatch {
+let type = { v -> __type__ v }
+
+add_dispatch {
+    method obj -> print "method '" ~ method ~ "' cannot be found on '" ~ obj ~ "'"
+}
+
+add_dispatch {
     :prefix! :true -> :false
     :prefix! :false -> :true
+    :prefix! 0 -> :true
+    :prefix! "" -> :true
+    :prefix! nothing -> :true
+    :prefix! [] -> :true
 
     :&& :false _ -> :false
-    :&& :true :true -> :true
+    :&& :true b -> b
 
     :|| :true _ -> :true
-    :|| :false :false -> :false
+    :|| :false b -> b
 
     :== x y -> __eq__ *!x *!y
     :!= x y -> !(x == y)
@@ -95,7 +111,7 @@ dispatch {
     :+ a b -> __add__ *!a *!b
     :- a b -> __sub__ *!a *!b
 
-    :* a b | all is_num [a, b] -> __mul__ *!a *!b
+    :* a b -> __mul__ *!a *!b
     :/ a b -> __fdiv__ *!a *!b
     :div a b -> __div__ *!a *!b
     :% a b -> __mod__ *!a *!b
@@ -114,12 +130,19 @@ dispatch {
     :prefix*   {x} -> x
     :prefix*! !{x} -> x
 
-    :@ arg matchbox -> matchbox arg
+    :@ x f -> f x
+    :$ f x -> f x
+    :<< f g -> { x -> f (g x) }
+    :>> g f -> { x -> f (g x) }
+    :>.> h t -> chain h t
 
     :map [] _ -> []
     :map (h . t) f -> f h . t :map f
 
-    :foreach list f | is_list list -> list :map { x -> *!(f x) }; nothing
+    :in _ [] -> :false
+    :in item (h . t) -> if (item == h) :true { item :in t }
+
+    :foreach list f | is_list list -> list :map (f >> unravel); nothing
 
     :len [] -> 0
     :len (_ . t) -> 1 + t :len
@@ -151,6 +174,20 @@ dispatch {
 
     :times 0 _ -> nothing
     :times n body -> body; (n - 1) :times body
+
+    :type v -> __type__ v
+}
+
+-- Option type dispatch
+add_dispatch {
+    :get :None -> "error"
+    :get [:Some, v] -> v
+
+    :get_or :None v -> v
+    :get_or [:Some, v] _ -> v
+
+    :map :None _ -> :None
+    :map [:Some, v] f -> [:Some, f v]
 }
 
 nothing

@@ -53,6 +53,7 @@ class AstPrinter {
       case Value.Lazy(environment, expr) => {
         environment.shortString + " " + printMaybeIndented(indent, print(indent + 1, expr), "{", "}", spaced = true)
       }
+      case Value.Matchbox(Nil) => "{ <empty matchbox> }"
       case Value.Matchbox(rows) => {
         val rowStrs = rows.map(print(indent + 1, _))
         printMaybeIndented(indent, rowStrs, "{", "", "}", spaced = true)

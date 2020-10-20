@@ -114,7 +114,7 @@ case object Interpreter {
       case (l: Value.Hashbox, Value.Matchbox(right)) =>
         val Value.Matchbox(left) = transmuteHashbox(l)
         Value.Matchbox(left ++ right)
-      case _ => ???
+      case _ => throw new RuntimeError(null, "Can only merge matchboxes together.")
     }
   }
 
@@ -131,10 +131,11 @@ case object Interpreter {
           case (_: Value.Matchbox | _: Value.Hashbox, _: Value.Matchbox | _: Value.Hashbox) =>
             mergeBoxes(left, right)
           case _ =>
-            // Use __dispatch__ to handle operator calls
-            val dispatchTable = env.get("__dispatch__");
             val args = List(Value.Atom("+"), left, right)
-            call(env, dispatchTable, args)
+            callDispatch(env, args) match {
+              case (value, Nil) => value
+              case (value, rest) => call(env, value, rest)
+            }
         }
       case TokenType.Operator(".") =>
         right match {
@@ -143,10 +144,11 @@ case object Interpreter {
             throw new RuntimeError(expr.op, s"Operator `.` expects a List for its right operand")
         }
       case TokenType.Operator(op) =>
-        // Use __dispatch__ to handle operator calls
-        val dispatchTable = env.get("__dispatch__");
         val args = List(Value.Atom(op), left, right)
-        call(env, dispatchTable, args)
+        callDispatch(env, args) match {
+          case (value, Nil) => value
+          case (value, rest) => call(env, value, rest)
+        }
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
@@ -156,10 +158,11 @@ case object Interpreter {
     expr.op.ty match {
       case TokenType.Operator(op) =>
         val value = eval(env, expr.expr)
-        // Use __dispatch__ to handle operator calls
-        val dispatchTable = env.get("__dispatch__");
         val args = List(Value.Atom("postfix" + op), value)
-        call(env, dispatchTable, args)
+        callDispatch(env, args) match {
+          case (value, Nil) => value
+          case (value, rest) => call(env, value, rest)
+        }
       case _ => throw new RuntimeError(expr.op, s"Unexpected operator: ${expr.op.ty}")
     }
   }
@@ -170,39 +173,88 @@ case object Interpreter {
       case TokenType.Operator("&") => Value.Lazy(env, innerExpr)
       case TokenType.Operator(op) =>
         val value = eval(env, expr.expr)
-        // Use __dispatch__ to handle operator calls
-        val dispatchTable = env.get("__dispatch__");
         val args = List(Value.Atom("prefix" + op), value)
-        call(env, dispatchTable, args)
+        callDispatch(env, args) match {
+          case (value, Nil) => value
+          case (value, rest) => call(env, value, rest)
+        }
       case _ => ???
     }
   }
 
   @tailrec
   final def call(env: Environment, callee: Value, args: List[Value]): Value = {
-    strictCoerce(callee, full = true) match {
-      case matchbox: Value.Matchbox => {
-        applyMatchbox(matchbox, args) match {
-          case (value, Nil) => value
-          case (value, rest) => call(env, value, rest)
-        }
+    val result = strictCoerce(callee, full = true) match {
+      case box: Value.Box => applyBox(box, args)
+      case chain: Value.Chain => applyChain(chain, args)
+      case Value.NativeFunction(func) => func(env, args)
+      case Value.List(values) => args match {
+        case Value.Number(i) :: rest if Math.floor(i) == i => (values(i.toInt), rest)
+        case _ => callDispatch(env, args.head :: callee :: args.tail)
       }
-      case hashbox: Value.Hashbox => {
-        applyHashbox(hashbox, args) match {
-          case (value, Nil) => value
-          case (value, rest) => call(env, value, rest)
+      case callee => callDispatch(env, args.head :: callee :: args.tail)
+    } 
+    result match {
+      case (value, Nil) => value
+      case (value, rest) => call(env, value, rest)
+    }
+  }
+
+  def applyBox(box: Value.Box, args: List[Value]): (Value, List[Value]) = box match {
+    case matchbox: Value.Matchbox => applyMatchbox(matchbox, args)
+    case hashbox: Value.Hashbox => applyHashbox(hashbox, args)
+  }
+
+  def applyBoxThunk(box: Value.Box, args: List[Thunk]): (Value, List[Value]) = box match {
+    case matchbox: Value.Matchbox => applyMatchboxThunk(matchbox, args)
+    case hashbox: Value.Hashbox => applyHashbox(hashbox, args.map(th => strictCoerceThunk(th, full = true)))
+  }
+
+  def applyChain(chain: Value.Chain, args: List[Value]): (Value, List[Value]) = {
+    applyChainThunk(chain, args.map(Thunk.from))
+  }
+
+  def applyChainThunk(chain: Value.Chain, args: List[Thunk]): (Value, List[Value]) = {
+    applyChainThunk(chain.boxes, args, chain.deferredArgs)
+  }
+
+  def applyChainThunk(chain: List[Value.Callable], args: List[Thunk], deferredArgs: List[Thunk]): (Value, List[Value]) = {
+    chain match {
+      case Nil =>
+        throw new NoMatchException(args.map(_.unevaluatedValue))
+      case h :: t =>
+        try {
+          val result = h match {
+            case box: Value.Box => applyBoxThunk(box, args) 
+            case chain: Value.Chain => applyChainThunk(chain, args)
+          }
+          result match {
+            case (box: Value.Box, Nil) => (Value.Chain(box :: t, args), Nil)
+            case x => x
+          }
+        } catch {
+          case _: NoMatchException =>
+            applyChainThunk(t, deferredArgs ++ args, Nil)
         }
+    }
+  }
+
+  @tailrec
+  final def callDispatch(env: Environment, args: List[Value]): (Value, List[Value]) = {
+    try {
+      env.tryGet("dispatch_table") match {
+        case Some(dispatchTable: Value.Matchbox) => applyMatchbox(dispatchTable, args)
+        case Some(dispatchTable: Value.Hashbox) => applyHashbox(dispatchTable, args)
+        case Some(dispatchTable: Value.Chain) => applyChain(dispatchTable, args)
+        case Some(_) => throw new RuntimeError(null, "dispatch_table is not a Matchbox or Hashbox.")
+        case None => throw new RuntimeError(null, "dispatch_table is not defined.")
       }
-      case Value.NativeFunction(func) =>
-        func(env, args) match {
-          case (value, Nil) => value
-          case (value, rest) => call(env, value, rest)
+    } catch {
+      case _: NoMatchException =>
+        val parentEnv = env.parent.getOrElse {
+          throw new NoMatchException(args)
         }
-      case callee => 
-        // Use __dispatch__ to handle method calls on values that are not core callables.
-        val dispatchTable = env.get("__dispatch__");
-        val newArgs = args.head :: callee :: args.tail;
-        call(env, dispatchTable, newArgs)
+        callDispatch(parentEnv, args)
     }
   }
 
@@ -260,6 +312,10 @@ case object Interpreter {
    * if N > M -> Partially applied matchbox, and and empty list.
    */
   def applyMatchbox(matchbox: Value.Matchbox, values: List[Value]): (Value, List[Value]) = {
+    applyMatchboxThunk(matchbox, values.map(Thunk.from))
+  }
+
+  def applyMatchboxThunk(matchbox: Value.Matchbox, values: List[Thunk]): (Value, List[Value]) = {
     assert(values.nonEmpty, "We must have at least one value to apply to this matchbox...")
 
     // NOTE: we need to "refresh"/clone the environments for the matchbox, because this matchbox
@@ -268,11 +324,11 @@ case object Interpreter {
     var remainingRows = matchbox.rows map {
       _.withNewEnvironment
     }
-    var remainingValues = values
 
+    var remainingValues = values
     while (remainingValues.nonEmpty) {
       // Chop off one arg, and represent that arg as a thonk
-      val arg = Thunk.from(remainingValues.head)
+      val arg = remainingValues.head
       remainingValues = remainingValues.tail
 
       // Build the list of new rows... but backwards.
@@ -289,7 +345,7 @@ case object Interpreter {
           if (remainingParameters.isEmpty) {
             val passesGuard = guard map { eval(innerEnvironment, _) == Value.Atom("true") } getOrElse true
             if (passesGuard) {
-              return (eval(innerEnvironment, result), remainingValues)
+              return (eval(innerEnvironment, result), remainingValues.map(_.unevaluatedValue))
             }
           } else {
             // Otherwise, we'll just save this pattern for later!
@@ -299,14 +355,14 @@ case object Interpreter {
       }
 
       if (newRows.isEmpty) {
-        throw new NoMatchException
+        throw new NoMatchException(values.map(_.unevaluatedValue))
       }
 
       // This is an artifact of having to build up a new list...
       remainingRows = newRows.reverse
     }
 
-    (Value.Matchbox(remainingRows), remainingValues)
+    (Value.Matchbox(remainingRows), remainingValues.map(_.unevaluatedValue))
   }
 
   /** Apply a hashbox to a list of arguments.
@@ -317,16 +373,15 @@ case object Interpreter {
    * if N > M -> Deferred hashbox (saving the args for later), and an empty list.
    */
   def applyHashbox(hashbox: Value.Hashbox, args: List[Value]): (Value, List[Value]) = {
+    // We NEED to coerce these values to hash them correctly.
+    val strictValues = args.map(strictCoerce(_, full = true))
+
     val Value.Hashbox(partialArguments, innerEnvironment, arity, rows, extraRow) = hashbox
-
-    (hashbox.partialArguments ++ args) splitAt hashbox.arity match {
+    (partialArguments ++ strictValues) splitAt hashbox.arity match {
       case (values, remainder) if values.length == hashbox.arity => {
-        // We NEED to coerce these values to hash them correctly.
-        val strictValues = values.map(strictCoerce(_, full = true))
-
-        if (rows.contains(strictValues)) {
+        if (rows.contains(values)) {
           // Cool, we just hash our value and call it a day.
-          val expr = hashbox.rows(strictValues)
+          val expr = hashbox.rows(values)
           (eval(Environment.fresh(hashbox.innerEnvironment), expr), remainder)
         } else extraRow match {
           // Otherwise, defer to the extra matchbox row...
@@ -334,7 +389,7 @@ case object Interpreter {
             val allValues = strictValues ++ remainder
             applyFinalHashboxRow(Environment.fresh(innerEnvironment), parameters, result, allValues)
           case None =>
-            throw new NoMatchException
+            throw new NoMatchException(args)
         }
       }
       case (partialArguments, Nil) if args.length < hashbox.arity => {
@@ -368,7 +423,7 @@ case object Interpreter {
 
         // Otherwise, just continue...
       } else {
-        throw new NoMatchException
+        throw new NoMatchException(values)
       }
     }
 
