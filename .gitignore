@@ -12,3 +12,7 @@ bin/
 project/
 target/
 build/
+
+# Ignore gradle directories
+.gradle/
+gradle
