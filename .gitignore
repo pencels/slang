@@ -4,6 +4,7 @@
 
 # Project-specific VSCode plugins
 .bloop
+.bsp
 .metals
 .vscode
 
