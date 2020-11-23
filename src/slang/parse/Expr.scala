@@ -1,18 +1,20 @@
 package slang.parse
 
 import java.lang.{String => JString}
+import slang.lex.Span
 
-sealed trait Expr
+case class Expr(span: Span, ty: ExprType)
 
-object Expr {
-  case class Id(name: JString) extends Expr
-  case class TypeId(name: JString) extends Expr
-  case object Nothing extends Expr
+sealed trait ExprType
+object ExprType {
+  case class Id(name: JString) extends ExprType
+  case class TypeId(name: JString) extends ExprType
+  case object Nothing extends ExprType
 
-  case class Let(pattern: Pattern, expr: Expr) extends Expr
-  case class Assign(left: Expr, right: Expr) extends Expr
+  case class Let(pattern: Pattern, expr: Expr) extends ExprType
+  case class Assign(left: Expr, right: Expr) extends ExprType
 
-  case class Call(callee: Expr, args: Seq[Expr]) extends Expr
+  case class Call(callee: Expr, args: Seq[Expr]) extends ExprType
 
   object String {
     def from(segments: Seq[Either[Expr, JString]]) =
@@ -21,27 +23,28 @@ object Expr {
         case _               => InterpolatedString(segments)
       }
   }
-  case class String(value: JString) extends Expr
+  case class String(value: JString) extends ExprType
   case class InterpolatedString(segments: Seq[Either[Expr, JString]])
-      extends Expr
-  case class Number(value: Double) extends Expr
-  case class List(exprs: Seq[Expr]) extends Expr
+      extends ExprType
+  case class Number(value: Double) extends ExprType
+  case class List(exprs: Seq[Expr]) extends ExprType
 
-  case class Sequence(exprs: Seq[Expr]) extends Expr
-  case class Lazy(exprs: Seq[Expr]) extends Expr
-  case class Group(exprs: Seq[Expr]) extends Expr
+  case class Sequence(exprs: Seq[Expr]) extends ExprType
+  case class Lazy(exprs: Seq[Expr]) extends ExprType
+  case class Group(exprs: Seq[Expr]) extends ExprType
 
-  case class Fn(name: Expr.Id, patterns: Seq[Pattern], result: Expr)
-      extends Expr
-  case class Lambda(patterns: Seq[Pattern], result: Expr) extends Expr
-  case class Matchbox(rows: Seq[MatchboxRow]) extends Expr
-  case class MatchboxRow(patterns: Seq[Pattern], result: Seq[Expr]) extends Expr
+  case class Fn(name: Expr, patterns: Seq[Pattern], result: Expr)
+      extends ExprType
+  case class Lambda(patterns: Seq[Pattern], result: Seq[Expr]) extends ExprType
+  case class Matchbox(rows: Seq[MatchboxRow]) extends ExprType
+  case class MatchboxRow(patterns: Seq[Pattern], result: Seq[Expr])
+      extends ExprType
 
   case class RegisterOperator(
       fixity: Fixity,
-      operator: Expr.Id,
+      operator: Expr,
       constraints: Seq[PrecedenceConstraint]
-  ) extends Expr
+  ) extends ExprType
 }
 
 trait Fixity
@@ -53,7 +56,7 @@ object Fixity {
 
 trait PrecedenceConstraint
 object PrecedenceConstraint {
-  case class With(op: Expr.Id) extends PrecedenceConstraint
-  case class Above(op: Expr.Id) extends PrecedenceConstraint
-  case class Below(op: Expr.Id) extends PrecedenceConstraint
+  case class With(op: ExprType.Id) extends PrecedenceConstraint
+  case class Above(op: ExprType.Id) extends PrecedenceConstraint
+  case class Below(op: ExprType.Id) extends PrecedenceConstraint
 }

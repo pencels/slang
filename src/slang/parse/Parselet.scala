@@ -29,8 +29,8 @@ trait PrefixParselet {
 object IdParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     op.ty match {
-      case TokenType.Id(name)     => Expr.Id(name)
-      case TokenType.TypeId(name) => Expr.TypeId(name)
+      case TokenType.Id(name)     => Expr(op.span, ExprType.Id(name))
+      case TokenType.TypeId(name) => Expr(op.span, ExprType.TypeId(name))
       case _                      => throw new Exception("This shouldn't happen :)")
     }
   }
@@ -39,7 +39,7 @@ object IdParselet extends PrefixParselet {
 object NumberParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     op.ty match {
-      case TokenType.Number(num) => Expr.Number(num)
+      case TokenType.Number(num) => Expr(op.span, ExprType.Number(num))
       case _                     => throw new Exception("This shouldn't happen :)")
     }
   }
@@ -51,7 +51,7 @@ object LetParselet extends PrefixParselet {
     parser.expect(TokenType.Eq, "Expected '=' after let pattern.")
     parser.skipNewlines() // Allow newlines after '='.
     val expr = parser.expr()
-    Expr.Let(pattern, expr)
+    Expr(op.span.merge(parser.prev.span), ExprType.Let(pattern, expr))
   }
 }
 
@@ -64,7 +64,7 @@ object ListParselet extends PrefixParselet {
       "list expression",
       "element"
     )
-    Expr.List(elements)
+    Expr(op.span.merge(parser.prev.span), ExprType.List(elements))
   }
 }
 
@@ -77,7 +77,7 @@ object GroupParselet extends PrefixParselet {
       "parenthesized expression",
       "expression"
     )
-    Expr.Group(exprs)
+    Expr(op.span.merge(parser.prev.span), ExprType.Group(exprs))
   }
 }
 
@@ -90,7 +90,7 @@ object AssignmentParselet extends InfixParselet {
   override def parse(parser: Parser, left: Expr, op: Token): Expr = {
     parser.skipNewlines()
     val expr = parser.expr()
-    Expr.Assign(left, expr)
+    Expr(left.span.merge(parser.prev.span), ExprType.Assign(left, expr))
   }
   override def getPrecedence: Int = Precedence.ASSIGNMENT
 }
@@ -104,7 +104,7 @@ object CallParselet extends InfixParselet {
       args.addOne(parser.expr(getPrecedence))
     } while (parser.currentPrecedence >= getPrecedence)
 
-    Expr.Call(left, args.toSeq)
+    Expr(left.span.merge(parser.prev.span), ExprType.Call(left, args.toSeq))
   }
 
   override def getPrecedence: Int = Precedence.CALL

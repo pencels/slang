@@ -128,7 +128,11 @@ class Parser(lexer: Lexer, context: ParseContext)
   }
 
   @tailrec
-  final def parseInfix(left: Expr, infixToken: Token, prec: Int): Expr = {
+  final def parseInfix(
+      left: Expr,
+      infixToken: Token,
+      prec: Int
+  ): Expr = {
     var token = infixToken
     // If there is a non-infix operator token, skip infix operator parsing.
     getInfixParselet(peek) match {
@@ -148,7 +152,7 @@ class Parser(lexer: Lexer, context: ParseContext)
     peek.ty match {
       case TokenType.Id(name) =>
         advance()
-        Pattern.Id(name, None)
+        Pattern(prev.span, PatternType.Id(name, None))
       case x => throw new ParserException(peek, "Unsupported pattern.")
     }
   }

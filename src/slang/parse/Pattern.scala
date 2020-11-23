@@ -1,21 +1,25 @@
 package slang.parse
 
 import java.lang.{String => JString}
+import slang.lex.Span
 
-sealed trait Pattern
-sealed trait IrrefutablePattern extends Pattern
+case class Pattern(span: Span, ty: PatternType)
 
-object Pattern {
+sealed trait PatternType
+sealed trait IrrefutablePattern extends PatternType
+
+object PatternType {
   case class Id(name: JString, binding: Option[Pattern] = None)
       extends IrrefutablePattern
   case class Ignore(binding: Option[Pattern] = None) extends IrrefutablePattern
 
-  case object Nothing extends Pattern
-  case class String(value: JString) extends Pattern
-  case class Number(value: Double) extends Pattern
-  case class List(patterns: Seq[Pattern]) extends Pattern
+  case object Nothing extends PatternType
+  case class String(value: JString) extends PatternType
+  case class Number(value: Double) extends PatternType
+  case class List(patterns: Seq[Pattern]) extends PatternType
 
-  case class Strict(pattern: IrrefutablePattern) extends Pattern
-  case class Type(typename: JString) extends Pattern
-  case class Constructor(name: JString, patterns: Seq[Pattern]) extends Pattern
+  case class Strict(pattern: IrrefutablePattern) extends PatternType
+  case class Type(typename: JString) extends PatternType
+  case class Constructor(name: JString, patterns: Seq[Pattern])
+      extends PatternType
 }
