@@ -15,11 +15,11 @@ object TokenType {
   case class Id(name: JString) extends TokenType
   case class TypeId(name: JString) extends TokenType
 
+  case object Nothing extends SimpleToken
   case class Atom(name: JString) extends TokenType
   case class Number(num: Double) extends TokenType
   case class String(str: JString) extends TokenType
   case class Op(op: JString) extends TokenType
-  case class UnknownOp(op: JString) extends TokenType
 
   case object Let extends SimpleToken
   case object When extends SimpleToken
@@ -43,4 +43,5 @@ object TokenType {
   case object Comma extends SimpleToken
   case object Semicolon extends SimpleToken
   case object Newline extends SimpleToken
+  case object Eof extends SimpleToken
 }

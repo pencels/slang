@@ -10,6 +10,7 @@ object Expr {
   case object Nothing extends Expr
 
   case class Let(pattern: Pattern, expr: Expr) extends Expr
+  case class Assign(left: Expr, right: Expr) extends Expr
 
   case class Call(callee: Expr, args: Seq[Expr]) extends Expr
 
@@ -28,6 +29,7 @@ object Expr {
 
   case class Sequence(exprs: Seq[Expr]) extends Expr
   case class Lazy(exprs: Seq[Expr]) extends Expr
+  case class Group(exprs: Seq[Expr]) extends Expr
 
   case class Fn(name: Expr.Id, patterns: Seq[Pattern], result: Expr)
       extends Expr

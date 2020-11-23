@@ -66,16 +66,19 @@ class Repl {
         }
 
       val file = new SourceFile("<stdin>", input)
-      val lexer = new Lexer(file, operatorTrie)
+      val reporter = new ConsoleErrorReporter(file)
 
-      try {
-        for (token <- lexer) {
-          pprint.pprintln(token)
+      val context = new ParseContext(file, reporter, operatorTrie)
+      val lexer = new Lexer(context)
+      var parser = new Parser(lexer, context)
+
+      val exprs = parser.toList.flatten
+
+      if (reporter.errors.isEmpty) {
+        // Evaluate the exprs!!!
+        for (expr <- exprs) {
+          pprint.pprintln(expr)
         }
-      } catch {
-        case LexerException(span, msg) => ErrorReporter.error(file, span, msg)
-        case ParserException(tok, msg) =>
-          ErrorReporter.error(file, tok.span, msg)
       }
     }
   }

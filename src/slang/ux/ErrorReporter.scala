@@ -1,6 +1,7 @@
 package slang.ux
 
 import scala.io.AnsiColor._
+import scala.collection.mutable
 
 import slang.lex._
 import slang.ux.MessageType.Warning
@@ -11,14 +12,33 @@ object MessageType {
   case object Warning extends MessageType
 }
 
-object ErrorReporter {
-  def error(file: SourceFile, span: Span, message: String) =
-    print(MessageType.Error, file, span, message)
+case class SpanMessage(span: Span, message: String)
 
-  def warning(file: SourceFile, span: Span, message: String) =
-    print(MessageType.Warning, file, span, message)
+trait ErrorReporter {
+  def error(span: Span, message: String): Unit
+  def warning(span: Span, message: String): Unit
+  def errors: Iterable[SpanMessage]
+  def warnings: Iterable[SpanMessage]
+}
 
-  def print(ty: MessageType, file: SourceFile, span: Span, message: String) = {
+class ConsoleErrorReporter(file: SourceFile) extends ErrorReporter {
+  private var _errors = mutable.ListBuffer[SpanMessage]()
+  private var _warnings = mutable.ListBuffer[SpanMessage]()
+
+  def errors = _errors
+  def warnings = _warnings
+
+  def error(span: Span, message: String) = {
+    _errors.addOne(SpanMessage(span, message))
+    print(MessageType.Error, span, message)
+  }
+
+  def warning(span: Span, message: String) = {
+    _warnings.addOne(SpanMessage(span, message))
+    print(MessageType.Warning, span, message)
+  }
+
+  def print(ty: MessageType, span: Span, message: String) = {
     val (color, heading) = ty match {
       case MessageType.Error   => (RED, "Error")
       case MessageType.Warning => (YELLOW, "Warning")
@@ -31,7 +51,7 @@ object ErrorReporter {
     // Highlight the span of the source text.
     val preHighlightStr = lineStr.slice(0, col - 1)
     val highlightStr = color + lineStr.slice(col - 1, col - 1 + spanLen) + RESET
-    val postHighlightStr = lineStr.substring(col - 1 + spanLen)
+    val postHighlightStr = lineStr.slice(col - 1 + spanLen, lineStr.length)
 
     // Generate the indent for the indicator line (e.g. ^^) so that
     // even input with \t should align.
@@ -50,6 +70,6 @@ object ErrorReporter {
     System.err.println(
       s"$BOLD$BLUE  $line | $RESET$preHighlightStr$highlightStr$postHighlightStr"
     )
-    System.err.println(border + indent + color + ("^" * spanLen) + RESET)
+    System.err.println(border + indent + color + ("^" * spanLen.max(1)) + RESET)
   }
 }

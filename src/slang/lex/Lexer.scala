@@ -1,30 +1,69 @@
 package slang.lex
 
-class Lexer(file: SourceFile, operatorTrie: OperatorTrie)
-    extends Iterator[Token] {
-  private[this] val inputIterator = file.source.iterator.buffered
+import slang.parse.ParseContext
+import scala.annotation.tailrec
 
-  var start = 0
-  var current = 0
+class Lexer(context: ParseContext) extends Iterator[Token] {
+  private[this] val inputIterator = context.file.source.iterator.buffered
 
-  skipWhitespace() // Prime the lexer by skipping leading whitespace.
+  /**
+    * Has the lexer reached EOF yet?
+    */
+  private var exhausted = false
 
-  override def next(): Token = {
+  private var start = 0
+  private var current = 0
+
+  override def next(): Token = advanceToNextToken()
+
+  override def hasNext: Boolean = !exhausted
+
+  @tailrec
+  final def advanceToNextToken(): Token = {
+    nextTokenOption() match {
+      case Some(token) => token
+      case None        => advanceToNextToken()
+    }
+  }
+
+  def nextTokenOption(): Option[Token] = {
+    skipWhitespace() // Skip leading whitespace so that we read an acutal token.
+
     start = current
 
-    val token = advance() match {
+    val ch = advance() match {
+      case Some(ch) => ch
+      case None =>
+        exhausted = true
+        return Some(makeToken(TokenType.Eof))
+    }
+
+    val token = ch match {
       case '\n' => makeToken(TokenType.Newline)
+      case ','  => makeToken(TokenType.Comma)
+      case ';'  => makeToken(TokenType.Semicolon)
       case '('  => makeToken(TokenType.LParen)
       case ')'  => makeToken(TokenType.RParen)
       case '['  => makeToken(TokenType.LSquare)
       case ']'  => makeToken(TokenType.RSquare)
       case '{'  => makeToken(TokenType.LCurly)
       case '}'  => makeToken(TokenType.RCurly)
-      case '='  => makeToken(TokenType.Eq)
+      case '=' =>
+        if (peek.exists(Lexer.OPERATOR_CONT contains _)) {
+          makeOpToken('=') // Allow operators to start with '='
+        } else {
+          makeToken(TokenType.Eq)
+        }
       case '-' =>
-        if (matchChar('-')) {
+        if (matchChar('>')) {
+          makeToken(TokenType.Arrow)
+        } else if (matchChar('-')) {
           advanceWhileMatch(_ != '\n')
-          makeToken(TokenType.Newline)
+          if (matchChar('\n')) {
+            makeToken(TokenType.Newline)
+          } else {
+            return None
+          }
         } else {
           makeOpToken('-')
         }
@@ -42,24 +81,21 @@ class Lexer(file: SourceFile, operatorTrie: OperatorTrie)
         } else if (Lexer.OPERATOR_START contains ch) {
           makeOpToken(ch)
         } else {
-          throw new LexerException(
+          context.reporter.error(
             Span(start, current),
-            s"Unexpected character: $ch"
+            s"Unexpected character: '$ch'"
           )
+          return None
         }
     }
 
-    skipWhitespace() // Skip whitespace after every token to maintain hasNext invariant.
-
-    token
+    Some(token)
   }
-
-  override def hasNext: Boolean = peek.isDefined
 
   def makeIdToken() = {
     advanceWhileMatch(Lexer.IDENTIFIER_CONT contains _)
 
-    val name = file.source.slice(start, current)
+    val name = context.file.source.slice(start, current)
 
     if (Lexer.KEYWORDS contains name) {
       makeToken(Lexer.KEYWORDS(name))
@@ -75,29 +111,29 @@ class Lexer(file: SourceFile, operatorTrie: OperatorTrie)
     matchChar('.')
     advanceWhileMatch(_.isDigit)
 
-    val number = file.source.slice(start, current).toDouble
+    val number = context.file.source.slice(start, current).toDouble
     makeToken(TokenType.Number(number))
   }
 
   def makeAtomToken() = {
     advanceWhileMatch(Lexer.IDENTIFIER_CONT contains _)
 
-    val name = file.source.slice(start, current)
+    val name = context.file.source.slice(start, current)
     makeToken(TokenType.Atom(name))
   }
 
   def makeOpToken(ch: Char): Token = {
-    if (!operatorTrie.active) {
+    if (!context.operatorTrie.active) {
       return makeUnknownOpToken()
     }
 
-    var node = operatorTrie.get(ch)
+    var node = context.operatorTrie.get(ch)
     var lastEnd: Option[Int] = node.flatMap { node =>
       if (node.end) Some(current) else None
     }
 
     while (node.isDefined && peek.exists(Lexer.OPERATOR_CONT contains _)) {
-      node = node.flatMap(_.get(advance()))
+      node = node.flatMap(_.get(advance().get))
       lastEnd = node.flatMap { node =>
         if (node.end) Some(current) else None
       } orElse lastEnd
@@ -106,7 +142,7 @@ class Lexer(file: SourceFile, operatorTrie: OperatorTrie)
     lastEnd match {
       case Some(ind) =>
         current = ind
-        val op = file.source.substring(start, ind)
+        val op = context.file.source.substring(start, ind)
         makeToken(TokenType.Op(op))
       case _ => makeUnknownOpToken()
     }
@@ -114,23 +150,14 @@ class Lexer(file: SourceFile, operatorTrie: OperatorTrie)
 
   def makeUnknownOpToken() = {
     advanceWhileMatch(Lexer.OPERATOR_CONT contains _)
-
-    val op = file.source.slice(start, current)
-
-    throw new LexerException(Span(start, current), s"Unknown operator '$op'")
-
-    makeToken(TokenType.UnknownOp(op))
+    val op = context.file.source.slice(start, current)
+    makeToken(TokenType.Op(op))
   }
 
   def makeToken(ty: TokenType) = Token(Span(start, current), ty)
 
   def skipWhitespace() = {
     while (matchChar(' ') || matchChar('\t')) {}
-
-    // Skip comments, if they're there.
-    if (matchChar('-') && matchChar('-')) {
-      advanceWhileMatch(_ != '\n')
-    }
   }
 
   def matchChar(ch: Char) = {
@@ -154,9 +181,8 @@ class Lexer(file: SourceFile, operatorTrie: OperatorTrie)
     inputIterator.nextOption() match {
       case Some(c) =>
         current += 1
-        c
-      case None =>
-        throw new Exception("advanced when there was no input")
+        Some(c)
+      case None => None
     }
   }
 }
@@ -168,7 +194,8 @@ object Lexer {
     "operator" -> TokenType.Operator,
     "when" -> TokenType.When,
     "let" -> TokenType.Let,
-    "fn" -> TokenType.Fn
+    "fn" -> TokenType.Fn,
+    "nothing" -> TokenType.Nothing
   )
 
   val OPERATOR_START =
