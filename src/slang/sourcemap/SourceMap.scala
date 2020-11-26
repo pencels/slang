@@ -9,10 +9,10 @@ import java.io.FileNotFoundException
 /**
   * A source file, containing line metadata.
   *
-  * @param name the name of the file
+  * @param path the path of the file
   * @param source the contents of the file
   */
-class SourceFile(val name: String, val source: String, val startPos: Int) {
+class SourceFile(val path: String, val source: String, val startPos: Int) {
 
   /**
     * Array of the line starting positions in the file.
