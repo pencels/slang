@@ -1,15 +1,19 @@
 package slang.runtime
 
+import scala.io.AnsiColor._
+
 import slang.parse.Expr
 import slang.parse.ExprType
 import slang.lex.TokenType
 import slang.sourcemap.Span
 import slang.ux.ErrorReporter
+import slang.sourcemap.SourceMap
+import slang.sourcemap.Loc
 
 case class RuntimeError(stack: List[Span], message: String) extends Exception
 
 object Interpreter {
-  def interpret(program: Seq[Expr], reporter: ErrorReporter): Unit = {
+  def interpret(program: Seq[Expr], sourceMap: SourceMap): Unit = {
     val env = new Environment
     var value: Value = Value.Nothing
     for (expr <- program) {
@@ -17,12 +21,26 @@ object Interpreter {
         value = eval(env, expr)
       } catch {
         case RuntimeError(spans, message) =>
-          reporter.trace(spans, message)
+          trace(sourceMap, spans, message)
           return
       }
     }
 
     println(value)
+  }
+
+  def trace(sourceMap: SourceMap, spans: Seq[Span], message: String) = {
+    System.err.println(s"$BOLD${RED}Runtime Error:$RESET $message")
+    for (span <- spans) {
+      val (file, Loc(line, col)) = sourceMap.location(span.start)
+      val lineStr = file.getSourceAtLine(line).stripLineEnd
+
+      System.err.println(s"$RED -> at ${file.path}:$line:$col$RESET")
+      System.err.println(s"      $lineStr")
+      val preHighlightStr = lineStr.slice(0, col - 1)
+      val indent = preHighlightStr.replaceAll("[^\t]", " ")
+      System.err.println(s"      " + indent + s"$RED^$RESET")
+    }
   }
 
   def eval(env: Environment, expr: Expr)(implicit

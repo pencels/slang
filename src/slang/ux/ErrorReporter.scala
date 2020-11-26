@@ -17,7 +17,6 @@ case class SpanMessage(span: Span, message: String)
 trait ErrorReporter {
   def error(span: Span, message: String): Unit
   def warning(span: Span, message: String): Unit
-  def trace(spans: Seq[Span], message: String): Unit
   def errors: Iterable[SpanMessage]
   def warnings: Iterable[SpanMessage]
 }
@@ -37,20 +36,6 @@ class ConsoleErrorReporter(sourceMap: SourceMap) extends ErrorReporter {
   def warning(span: Span, message: String) = {
     _warnings.addOne(SpanMessage(span, message))
     print(MessageType.Warning, span, message)
-  }
-
-  def trace(spans: Seq[Span], message: String) = {
-    System.err.println(s"$BOLD${RED}Runtime Error:$RESET $message")
-    for (span <- spans) {
-      val (file, Loc(line, col)) = sourceMap.location(span.start)
-      val lineStr = file.getSourceAtLine(line).stripLineEnd
-
-      System.err.println(s"$RED -> at ${file.path}:$line:$col$RESET")
-      System.err.println(s"      $lineStr")
-      val preHighlightStr = lineStr.slice(0, col - 1)
-      val indent = preHighlightStr.replaceAll("[^\t]", " ")
-      System.err.println(s"      " + indent + s"$RED^$RESET")
-    }
   }
 
   def print(ty: MessageType, span: Span, message: String) = {

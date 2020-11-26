@@ -82,7 +82,7 @@ class Repl {
       val exprs = parser.toList.flatten
 
       if (reporter.errors.isEmpty) {
-        Interpreter.interpret(exprs, reporter)
+        Interpreter.interpret(exprs, sourceMap)
       }
     }
   }
