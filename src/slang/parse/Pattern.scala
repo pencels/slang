@@ -1,7 +1,7 @@
 package slang.parse
 
 import java.lang.{String => JString}
-import slang.lex.Span
+import slang.sourcemap.Span
 
 case class Pattern(span: Span, ty: PatternType)
 

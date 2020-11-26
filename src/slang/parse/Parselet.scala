@@ -22,11 +22,11 @@ object Associativity {
   case object NonAssoc extends Associativity
 }
 
-trait PrefixParselet {
+sealed trait PrefixParselet {
   def parse(parser: Parser, op: Token): Expr
 }
 
-object IdParselet extends PrefixParselet {
+case object IdParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     op.ty match {
       case TokenType.Id(name)     => Expr(op.span, ExprType.Id(name))
@@ -36,7 +36,16 @@ object IdParselet extends PrefixParselet {
   }
 }
 
-object NumberParselet extends PrefixParselet {
+case object LiteralParselet extends PrefixParselet {
+  override def parse(parser: Parser, op: Token): Expr = {
+    op.ty match {
+      case TokenType.Nothing => Expr(op.span, ExprType.Nothing)
+      case _                 => ??? // TODO!
+    }
+  }
+}
+
+case object NumberParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     op.ty match {
       case TokenType.Number(num) => Expr(op.span, ExprType.Number(num))
@@ -45,7 +54,7 @@ object NumberParselet extends PrefixParselet {
   }
 }
 
-object LetParselet extends PrefixParselet {
+case object LetParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     val pattern = parser.pattern()
     parser.expect(TokenType.Eq, "Expected '=' after let pattern.")
@@ -55,7 +64,7 @@ object LetParselet extends PrefixParselet {
   }
 }
 
-object ListParselet extends PrefixParselet {
+case object ListParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     val elements = parser.parseDelimited(
       _.expr(),
@@ -68,7 +77,7 @@ object ListParselet extends PrefixParselet {
   }
 }
 
-object GroupParselet extends PrefixParselet {
+case object GroupParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     val exprs = parser.parseDelimited(
       _.expr(),
@@ -81,12 +90,22 @@ object GroupParselet extends PrefixParselet {
   }
 }
 
-trait InfixParselet {
+sealed trait InfixParselet {
   def parse(parser: Parser, left: Expr, op: Token): Expr
   def getPrecedence: Int
 }
 
-object AssignmentParselet extends InfixParselet {
+case class BinOpParselet(val prec: Int, val isRight: Boolean)
+    extends InfixParselet {
+  def parse(parser: Parser, left: Expr, op: Token): Expr = {
+    parser.skipNewlines() // Allow newlines after binary operators.
+    val right = parser.expr(prec - (if (isRight) 1 else 0))
+    Expr(left.span.merge(parser.prev.span), ExprType.BinOp(left, op, right))
+  }
+  def getPrecedence: Int = prec
+}
+
+case object AssignmentParselet extends InfixParselet {
   override def parse(parser: Parser, left: Expr, op: Token): Expr = {
     parser.skipNewlines()
     val expr = parser.expr()
@@ -95,7 +114,7 @@ object AssignmentParselet extends InfixParselet {
   override def getPrecedence: Int = Precedence.ASSIGNMENT
 }
 
-object CallParselet extends InfixParselet {
+case object CallParselet extends InfixParselet {
   override def parse(parser: Parser, left: Expr, op: Token): Expr = {
     val args = mutable.ListBuffer[Expr]()
 

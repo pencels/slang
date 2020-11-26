@@ -1,7 +1,9 @@
 package slang.parse
 
 import java.lang.{String => JString}
-import slang.lex.Span
+
+import slang.lex._
+import slang.sourcemap._
 
 case class Expr(span: Span, ty: ExprType)
 
@@ -14,6 +16,7 @@ object ExprType {
   case class Let(pattern: Pattern, expr: Expr) extends ExprType
   case class Assign(left: Expr, right: Expr) extends ExprType
 
+  case class BinOp(left: Expr, op: Token, right: Expr) extends ExprType
   case class Call(callee: Expr, args: Seq[Expr]) extends ExprType
 
   object String {

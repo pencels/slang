@@ -1,10 +1,12 @@
 package slang.parse
 
-import slang.lex.{SourceFile, OperatorTrie}
+import slang.lex.OperatorTrie
 import slang.ux.ErrorReporter
+import slang.sourcemap.SourceMap
 
 case class ParseContext(
-    file: SourceFile,
+    sourceMap: SourceMap,
+    startPos: Int,
     reporter: ErrorReporter,
     operatorTrie: OperatorTrie
 )

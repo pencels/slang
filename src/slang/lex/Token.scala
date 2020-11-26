@@ -2,6 +2,8 @@ package slang.lex
 
 import java.lang.{String => JString}
 
+import slang.sourcemap.Span
+
 case class Token(span: Span, ty: TokenType)
 
 sealed trait TokenType

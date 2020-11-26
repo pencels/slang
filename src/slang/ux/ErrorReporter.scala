@@ -4,7 +4,7 @@ import scala.io.AnsiColor._
 import scala.collection.mutable
 
 import slang.lex._
-import slang.ux.MessageType.Warning
+import slang.sourcemap._
 
 sealed trait MessageType
 object MessageType {
@@ -21,7 +21,7 @@ trait ErrorReporter {
   def warnings: Iterable[SpanMessage]
 }
 
-class ConsoleErrorReporter(file: SourceFile) extends ErrorReporter {
+class ConsoleErrorReporter(sourceMap: SourceMap) extends ErrorReporter {
   private var _errors = mutable.ListBuffer[SpanMessage]()
   private var _warnings = mutable.ListBuffer[SpanMessage]()
 
@@ -44,7 +44,7 @@ class ConsoleErrorReporter(file: SourceFile) extends ErrorReporter {
       case MessageType.Warning => (YELLOW, "Warning")
     }
 
-    val Loc(line, col) = file.locationOfCharPos(span.start)
+    val (file, Loc(line, col)) = sourceMap.location(span.start)
     val lineStr = file.getSourceAtLine(line).stripLineEnd
     val spanLen = span.end - span.start
 

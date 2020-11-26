@@ -13,9 +13,12 @@ import org.jline.reader.impl.DefaultParser
 import slang.Slang
 import slang.parse._
 import slang.lex._
+import slang.sourcemap.SourceFile
 import org.jline.builtins.Completers.Completer
 import org.jline.reader.Expander
 import org.jline.reader.History
+import slang.runtime.Interpreter
+import slang.sourcemap.SourceMap
 
 class ReplExpander extends Expander {
   override def expandHistory(history: History, str: String): String = str
@@ -51,6 +54,7 @@ class Repl {
     */
   def run(): Unit = {
     val operatorTrie = new OperatorTrie
+    val sourceMap = new SourceMap
 
     operatorTrie.add("-")
 
@@ -65,20 +69,20 @@ class Repl {
           case _: EndOfFileException => return
         }
 
-      val file = new SourceFile("<stdin>", input)
-      val reporter = new ConsoleErrorReporter(file)
+      var lastPos = sourceMap.lastPos
 
-      val context = new ParseContext(file, reporter, operatorTrie)
+      sourceMap.addVirtualFile("<stdin>", input)
+
+      val reporter = new ConsoleErrorReporter(sourceMap)
+      val context =
+        new ParseContext(sourceMap, lastPos, reporter, operatorTrie)
       val lexer = new Lexer(context)
       var parser = new Parser(lexer, context)
 
       val exprs = parser.toList.flatten
 
       if (reporter.errors.isEmpty) {
-        // Evaluate the exprs!!!
-        for (expr <- exprs) {
-          pprint.pprintln(expr)
-        }
+        Interpreter.interpret(exprs, reporter)
       }
     }
   }

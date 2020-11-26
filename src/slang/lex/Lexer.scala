@@ -1,18 +1,27 @@
 package slang.lex
 
 import slang.parse.ParseContext
+import slang.sourcemap.Span
+
 import scala.annotation.tailrec
 
 class Lexer(context: ParseContext) extends Iterator[Token] {
-  private[this] val inputIterator = context.file.source.iterator.buffered
+  private[this] val inputIterator =
+    context.sourceMap.fileLookup(context.startPos) match {
+      case Some(file) => file.source.iterator.buffered
+      case None =>
+        throw new Exception(
+          s"Lexer started on position ${context.startPos} but no file contains this position."
+        )
+    }
 
   /**
     * Has the lexer reached EOF yet?
     */
   private var exhausted = false
 
-  private var start = 0
-  private var current = 0
+  private var start = context.startPos
+  private var current = start
 
   override def next(): Token = advanceToNextToken()
 
@@ -95,7 +104,7 @@ class Lexer(context: ParseContext) extends Iterator[Token] {
   def makeIdToken() = {
     advanceWhileMatch(Lexer.IDENTIFIER_CONT contains _)
 
-    val name = context.file.source.slice(start, current)
+    val name = context.sourceMap.slice(start, current)
 
     if (Lexer.KEYWORDS contains name) {
       makeToken(Lexer.KEYWORDS(name))
@@ -111,14 +120,14 @@ class Lexer(context: ParseContext) extends Iterator[Token] {
     matchChar('.')
     advanceWhileMatch(_.isDigit)
 
-    val number = context.file.source.slice(start, current).toDouble
+    val number = context.sourceMap.slice(start, current).toDouble
     makeToken(TokenType.Number(number))
   }
 
   def makeAtomToken() = {
     advanceWhileMatch(Lexer.IDENTIFIER_CONT contains _)
 
-    val name = context.file.source.slice(start, current)
+    val name = context.sourceMap.slice(start, current)
     makeToken(TokenType.Atom(name))
   }
 
@@ -142,7 +151,7 @@ class Lexer(context: ParseContext) extends Iterator[Token] {
     lastEnd match {
       case Some(ind) =>
         current = ind
-        val op = context.file.source.substring(start, ind)
+        val op = context.sourceMap.slice(start, ind)
         makeToken(TokenType.Op(op))
       case _ => makeUnknownOpToken()
     }
@@ -150,7 +159,7 @@ class Lexer(context: ParseContext) extends Iterator[Token] {
 
   def makeUnknownOpToken() = {
     advanceWhileMatch(Lexer.OPERATOR_CONT contains _)
-    val op = context.file.source.slice(start, current)
+    val op = context.sourceMap.slice(start, current)
     makeToken(TokenType.Op(op))
   }
 

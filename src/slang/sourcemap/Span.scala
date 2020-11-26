@@ -1,4 +1,4 @@
-package slang.lex
+package slang.sourcemap
 
 case class Span(start: Int, end: Int) {
   def merge(other: Span): Span =

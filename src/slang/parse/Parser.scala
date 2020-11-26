@@ -1,10 +1,10 @@
 package slang.parse
 
 import slang.lex._
+import slang.sourcemap._
 
 import scala.collection.mutable
 import scala.annotation.tailrec
-import slang.lex.TokenType.Eof
 
 case class ParserException(token: Token, message: String)
     extends Exception(message)
@@ -52,6 +52,7 @@ class Parser(lexer: Lexer, context: ParseContext)
 
   def getPrefixParselet(token: Token): PrefixParselet = {
     token.ty match {
+      case TokenType.Nothing   => LiteralParselet
       case TokenType.Let       => LetParselet
       case TokenType.Id(_)     => IdParselet
       case TokenType.TypeId(_) => IdParselet
@@ -97,12 +98,7 @@ class Parser(lexer: Lexer, context: ParseContext)
           _: TokenType.Number | _: TokenType.String =>
         Some(CallParselet)
 
-      case TokenType.RSquare =>
-        throw new ParserException(
-          token,
-          s"Unexpected ']'. Might have too many closing brackets here."
-        )
-
+      case TokenType.Op("+") => Some(BinOpParselet(50, false))
       case TokenType.Op(op) =>
         throw new ParserException(
           token,
