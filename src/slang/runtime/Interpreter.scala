@@ -9,12 +9,15 @@ import slang.sourcemap.Span
 import slang.ux.ErrorReporter
 import slang.sourcemap.SourceMap
 import slang.sourcemap.Loc
+import slang.parse.Pattern
+import slang.parse.PatternType
 
 case class RuntimeError(stack: List[Span], message: String) extends Exception
 
 object Interpreter {
+  val env = new Environment
+
   def interpret(program: Seq[Expr], sourceMap: SourceMap): Unit = {
-    val env = new Environment
     var value: Value = Value.Nothing
     for (expr <- program) {
       try {
@@ -26,11 +29,21 @@ object Interpreter {
       }
     }
 
-    println(value)
+    if (value != Value.Nothing) {
+      value match {
+        case Value.Number(num) =>
+          var numStr = num.toString
+          if (numStr.endsWith(".0")) {
+            numStr = numStr.slice(0, numStr.length - 2)
+          }
+          println(numStr)
+        case _ => println(value)
+      }
+    }
   }
 
   def trace(sourceMap: SourceMap, spans: Seq[Span], message: String) = {
-    System.err.println(s"$BOLD${RED}Runtime Error:$RESET $message")
+    System.err.println(s"$BOLD${RED}Runtime Error:$RESET$BOLD $message$RESET")
     for (span <- spans) {
       val (file, Loc(line, col)) = sourceMap.location(span.start)
       val lineStr = file.getSourceAtLine(line).stripLineEnd
@@ -49,6 +62,15 @@ object Interpreter {
     expr.ty match {
       case ExprType.Nothing   => Value.Nothing
       case ExprType.Number(n) => Value.Number(n)
+      case ExprType.Id(name)  => env.get(name)(expr.span :: stack)
+      case ExprType.Let(Pattern(span, PatternType.Id(name, _)), expr) =>
+        val value = eval(env, expr)
+        env.define(name, value)(span :: stack)
+        Value.Nothing
+      case ExprType.Assign(Expr(span, ExprType.Id(name)), expr) =>
+        val value = eval(env, expr)
+        env.set(name, value)(span :: stack)
+        Value.Nothing
       case ExprType.BinOp(left, op, right) =>
         val TokenType.Op(name) = op.ty
         name match {
