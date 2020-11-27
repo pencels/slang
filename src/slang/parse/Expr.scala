@@ -38,7 +38,7 @@ object ExprType {
 
   case class Fn(name: Expr, patterns: Seq[Pattern], result: Expr)
       extends ExprType
-  case class Lambda(patterns: Seq[Pattern], result: Seq[Expr]) extends ExprType
+  case class Lambda(patterns: Seq[Pattern], result: Expr) extends ExprType
   case class Matchbox(rows: Seq[MatchboxRow]) extends ExprType
   case class MatchboxRow(patterns: Seq[Pattern], result: Seq[Expr])
       extends ExprType

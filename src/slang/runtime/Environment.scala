@@ -3,11 +3,13 @@ package slang.runtime
 import scala.collection.mutable
 import slang.sourcemap.Span
 
-class Environment {
+class Environment(parent: Option[Environment] = None) {
   private val variables = mutable.Map[String, Value]()
 
+  def inLocalScope(name: String): Boolean = variables contains name
+
   def define(name: String, value: Value)(implicit stack: List[Span]): Unit = {
-    if (variables contains name) {
+    if (inLocalScope(name)) {
       throw new RuntimeError(
         stack,
         s"Variable '$name' has already been declared."
@@ -18,13 +20,17 @@ class Environment {
   }
 
   def set(name: String, value: Value)(implicit stack: List[Span]): Unit = {
-    if (variables contains name) {
+    if (inLocalScope(name)) {
       variables += (name -> value)
     } else {
-      throw new RuntimeError(
-        stack,
-        s"Variable '$name' has not been declared in this scope."
-      )
+      parent match {
+        case Some(parent) => parent.set(name, value)
+        case None =>
+          throw new RuntimeError(
+            stack,
+            s"Variable '$name' has not been declared in this scope."
+          )
+      }
     }
   }
 
@@ -36,5 +42,16 @@ class Environment {
     }
   }
 
-  def tryGet(name: String): Option[Value] = variables.get(name)
+  def tryGet(name: String): Option[Value] = {
+    if (inLocalScope(name)) {
+      variables.get(name)
+    } else {
+      parent.flatMap(_.tryGet(name))
+    }
+  }
+}
+
+object Environment {
+  def fresh(env: Environment) = new Environment(Some(env))
+  def empty = new Environment(None)
 }

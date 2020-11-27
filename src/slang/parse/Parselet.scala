@@ -54,6 +54,22 @@ case object NumberParselet extends PrefixParselet {
   }
 }
 
+case object LambdaParselet extends PrefixParselet {
+  override def parse(parser: Parser, op: Token): Expr = {
+    val patterns = mutable.ListBuffer[Pattern]()
+    patterns.addOne(parser.pattern())
+    while (!parser.check(TokenType.Arrow)) {
+      patterns.addOne(parser.pattern())
+    }
+    parser.expect(TokenType.Arrow, "Expected '->' after lambda patterns.")
+    val expr = parser.expr()
+    Expr(
+      op.span.merge(parser.prev.span),
+      ExprType.Lambda(patterns.toSeq, expr)
+    )
+  }
+}
+
 case object LetParselet extends PrefixParselet {
   override def parse(parser: Parser, op: Token): Expr = {
     val pattern = parser.pattern()

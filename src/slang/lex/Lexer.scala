@@ -49,14 +49,20 @@ class Lexer(context: ParseContext) extends Iterator[Token] {
 
     val token = ch match {
       case '\n' => makeToken(TokenType.Newline)
-      case ','  => makeToken(TokenType.Comma)
-      case ';'  => makeToken(TokenType.Semicolon)
-      case '('  => makeToken(TokenType.LParen)
-      case ')'  => makeToken(TokenType.RParen)
-      case '['  => makeToken(TokenType.LSquare)
-      case ']'  => makeToken(TokenType.RSquare)
-      case '{'  => makeToken(TokenType.LCurly)
-      case '}'  => makeToken(TokenType.RCurly)
+      case '\\' =>
+        // Allow backslashes to insert line breaks.
+        if (matchChar('\n')) {
+          return None
+        }
+        makeToken(TokenType.Backslash)
+      case ',' => makeToken(TokenType.Comma)
+      case ';' => makeToken(TokenType.Semicolon)
+      case '(' => makeToken(TokenType.LParen)
+      case ')' => makeToken(TokenType.RParen)
+      case '[' => makeToken(TokenType.LSquare)
+      case ']' => makeToken(TokenType.RSquare)
+      case '{' => makeToken(TokenType.LCurly)
+      case '}' => makeToken(TokenType.RCurly)
       case '=' =>
         if (peek.exists(Lexer.OPERATOR_CONT contains _)) {
           makeOpToken('=') // Allow operators to start with '='

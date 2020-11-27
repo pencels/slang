@@ -57,6 +57,7 @@ class Parser(lexer: Lexer, context: ParseContext)
       case TokenType.Id(_)     => IdParselet
       case TokenType.TypeId(_) => IdParselet
       case TokenType.Number(_) => NumberParselet
+      case TokenType.Backslash => LambdaParselet
       case TokenType.LParen    => GroupParselet
       case TokenType.LSquare   => ListParselet
 
